@@ -12,3 +12,8 @@ add_executable(elob
 )
 
 target_compile_options(elob PRIVATE -Wall -Wextra -Wpedantic)
+
+target_sources(elob PRIVATE
+	src/price_level.cpp
+	src/order_book.cpp
+)
