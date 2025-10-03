@@ -36,6 +36,11 @@ public:
     bool empty() const noexcept { return orders_.empty(); }
     int64_t price() const noexcept { return price_; }
     const OrderList& orders() const noexcept { return orders_; }
+    // Non-const access for engine operations (intentional; caller mutates orders)
+    OrderList& orders() noexcept { return orders_; }
+
+    OrderIterator begin() noexcept { return orders_.begin(); }
+    OrderIterator end() noexcept { return orders_.end(); }
 
 private:
     int64_t price_;

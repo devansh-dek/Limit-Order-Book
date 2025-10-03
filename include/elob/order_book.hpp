@@ -36,6 +36,26 @@ public:
         return (it == map_ref.end()) ? nullptr : it->second.get();
     }
 
+    // Best price accessors (nullptr if none)
+    PriceLevel* best_bid() {
+        if (bids_.empty()) return nullptr;
+        return bids_.begin()->second.get();
+    }
+
+    PriceLevel* best_ask() {
+        if (asks_.empty()) return nullptr;
+        return asks_.begin()->second.get();
+    }
+
+    // Remove a price level if it's empty
+    void remove_level_if_empty(Side side, Price price) {
+        auto &map_ref = (side == Side::Buy) ? bids_ : asks_;
+        auto it = map_ref.find(price);
+        if (it != map_ref.end() && it->second->empty()) {
+            map_ref.erase(it);
+        }
+    }
+
 private:
     // Bids: map keyed by price descending (highest bid first)
     std::map<Price, std::unique_ptr<PriceLevel>, std::greater<Price>> bids_;
