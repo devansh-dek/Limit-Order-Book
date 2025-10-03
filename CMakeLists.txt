@@ -18,3 +18,19 @@ target_sources(elob PRIVATE
 	src/order_book.cpp
 	src/matching_engine.cpp
 )
+
+# Include directory for headers
+target_include_directories(elob PRIVATE ${CMAKE_SOURCE_DIR}/include)
+
+# Unit tests target
+add_executable(elob_tests
+	tests/test_cancel_modify.cpp
+	src/order.cpp
+	src/trade.cpp
+	src/event.cpp
+	src/price_level.cpp
+	src/order_book.cpp
+	src/matching_engine.cpp
+)
+target_include_directories(elob_tests PRIVATE ${CMAKE_SOURCE_DIR}/include)
+target_compile_options(elob_tests PRIVATE -Wall -Wextra -Wpedantic)

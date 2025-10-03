@@ -7,6 +7,7 @@
 #include <map>
 #include <memory>
 #include <cstdint>
+#include <unordered_map>
 
 namespace elob {
 
@@ -18,22 +19,44 @@ public:
 
     // Insert order into book; returns iterator/handles could be added later.
     void insert(const Order& o) {
-        auto &map_ref = (o.side == Side::Buy) ? bids_ : asks_;
-        auto it = map_ref.find(o.price);
-        if (it == map_ref.end()) {
-            auto pl = std::make_unique<PriceLevel>(o.price);
-            pl->add_order(o);
-            map_ref.emplace(o.price, std::move(pl));
+        if (o.side == Side::Buy) {
+            auto it = bids_.find(o.price);
+            PriceLevel *pl = nullptr;
+            if (it == bids_.end()) {
+                auto up = std::make_unique<PriceLevel>(o.price);
+                pl = up.get();
+                auto res = bids_.emplace(o.price, std::move(up));
+                it = res.first;
+            } else {
+                pl = it->second.get();
+            }
+            auto oit = pl->add_order(o);
+            order_index_.emplace(o.order_id, Locator{o.side, o.price, pl, oit, o.timestamp});
         } else {
-            it->second->add_order(o);
+            auto it = asks_.find(o.price);
+            PriceLevel *pl = nullptr;
+            if (it == asks_.end()) {
+                auto up = std::make_unique<PriceLevel>(o.price);
+                pl = up.get();
+                auto res = asks_.emplace(o.price, std::move(up));
+                it = res.first;
+            } else {
+                pl = it->second.get();
+            }
+            auto oit = pl->add_order(o);
+            order_index_.emplace(o.order_id, Locator{o.side, o.price, pl, oit, o.timestamp});
         }
     }
 
     // Find price level for side/price
     PriceLevel* find_level(Side side, Price price) {
-        auto &map_ref = (side == Side::Buy) ? bids_ : asks_;
-        auto it = map_ref.find(price);
-        return (it == map_ref.end()) ? nullptr : it->second.get();
+        if (side == Side::Buy) {
+            auto it = bids_.find(price);
+            return (it == bids_.end()) ? nullptr : it->second.get();
+        } else {
+            auto it = asks_.find(price);
+            return (it == asks_.end()) ? nullptr : it->second.get();
+        }
     }
 
     // Best price accessors (nullptr if none)
@@ -49,18 +72,39 @@ public:
 
     // Remove a price level if it's empty
     void remove_level_if_empty(Side side, Price price) {
-        auto &map_ref = (side == Side::Buy) ? bids_ : asks_;
-        auto it = map_ref.find(price);
-        if (it != map_ref.end() && it->second->empty()) {
-            map_ref.erase(it);
+        if (side == Side::Buy) {
+            auto it = bids_.find(price);
+            if (it != bids_.end() && it->second->empty()) bids_.erase(it);
+        } else {
+            auto it = asks_.find(price);
+            if (it != asks_.end() && it->second->empty()) asks_.erase(it);
         }
     }
+
+    // Cancel an order by id. Returns true if removed.
+    bool cancel(uint64_t order_id);
+
+    // Modify an order: change price and/or quantity and optionally timestamp.
+    // Returns true on success.
+    bool modify(uint64_t order_id, Price new_price, uint64_t new_quantity, uint64_t new_timestamp);
 
 private:
     // Bids: map keyed by price descending (highest bid first)
     std::map<Price, std::unique_ptr<PriceLevel>, std::greater<Price>> bids_;
     // Asks: map keyed by price ascending (lowest ask first)
     std::map<Price, std::unique_ptr<PriceLevel>, std::less<Price>> asks_;
+
+    using OrderIterator = PriceLevel::OrderIterator;
+
+    struct Locator {
+        Side side;
+        Price price;
+        PriceLevel* level;
+        OrderIterator it;
+        uint64_t timestamp;
+    };
+
+    std::unordered_map<uint64_t, Locator> order_index_;
 };
 
 } // namespace elob
