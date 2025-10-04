@@ -24,7 +24,7 @@ target_sources(elob PRIVATE
 target_include_directories(elob PRIVATE ${CMAKE_SOURCE_DIR}/include)
 
 # Unit tests target
-add_executable(elob_tests
+add_executable(elob_test_cancel
 	tests/test_cancel_modify.cpp
 	src/order.cpp
 	src/trade.cpp
@@ -34,5 +34,31 @@ add_executable(elob_tests
 	src/matching_engine.cpp
 	src/ingestor.cpp
 )
-target_include_directories(elob_tests PRIVATE ${CMAKE_SOURCE_DIR}/include)
-target_compile_options(elob_tests PRIVATE -Wall -Wextra -Wpedantic)
+target_include_directories(elob_test_cancel PRIVATE ${CMAKE_SOURCE_DIR}/include)
+target_compile_options(elob_test_cancel PRIVATE -Wall -Wextra -Wpedantic)
+
+add_executable(elob_test_edgecases
+	tests/test_edgecases.cpp
+	src/order.cpp
+	src/trade.cpp
+	src/event.cpp
+	src/price_level.cpp
+	src/order_book.cpp
+	src/matching_engine.cpp
+	src/ingestor.cpp
+)
+target_include_directories(elob_test_edgecases PRIVATE ${CMAKE_SOURCE_DIR}/include)
+target_compile_options(elob_test_edgecases PRIVATE -Wall -Wextra -Wpedantic)
+
+add_executable(elob_test_ingest
+	tests/test_ingest.cpp
+	src/order.cpp
+	src/trade.cpp
+	src/event.cpp
+	src/price_level.cpp
+	src/order_book.cpp
+	src/matching_engine.cpp
+	src/ingestor.cpp
+)
+target_include_directories(elob_test_ingest PRIVATE ${CMAKE_SOURCE_DIR}/include)
+target_compile_options(elob_test_ingest PRIVATE -Wall -Wextra -Wpedantic)

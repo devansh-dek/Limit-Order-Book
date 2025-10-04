@@ -25,9 +25,11 @@ bool OrderBook::modify(uint64_t order_id, Price new_price, uint64_t new_quantity
 	OrderIterator old_it = loc.it;
 	Order &ord = *old_it;
 
-	// Update quantity in place
+	// Update quantity in place, preserving already-filled amount
+	uint64_t filled = 0;
+	if (ord.quantity >= ord.remaining) filled = ord.quantity - ord.remaining;
 	ord.quantity = new_quantity;
-	ord.remaining = new_quantity; // reset remaining to new quantity for simplicity
+	ord.remaining = (new_quantity > filled) ? (new_price == ord.price ? (new_quantity - filled) : (new_quantity - filled)) : 0;
 	ord.timestamp = new_timestamp;
 
 	if (ord.price == new_price) {
