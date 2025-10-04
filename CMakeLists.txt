@@ -17,6 +17,7 @@ target_sources(elob PRIVATE
 	src/price_level.cpp
 	src/order_book.cpp
 	src/matching_engine.cpp
+	src/ingestor.cpp
 )
 
 # Include directory for headers
@@ -31,6 +32,7 @@ add_executable(elob_tests
 	src/price_level.cpp
 	src/order_book.cpp
 	src/matching_engine.cpp
+	src/ingestor.cpp
 )
 target_include_directories(elob_tests PRIVATE ${CMAKE_SOURCE_DIR}/include)
 target_compile_options(elob_tests PRIVATE -Wall -Wextra -Wpedantic)
