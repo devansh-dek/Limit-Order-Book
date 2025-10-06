@@ -76,3 +76,17 @@ add_executable(elob_test_replay
 )
 target_include_directories(elob_test_replay PRIVATE ${CMAKE_SOURCE_DIR}/include)
 target_compile_options(elob_test_replay PRIVATE -Wall -Wextra -Wpedantic)
+
+add_executable(elob_benchmark
+	tests/test_benchmark.cpp
+	src/order.cpp
+	src/trade.cpp
+	src/event.cpp
+	src/price_level.cpp
+	src/order_book.cpp
+	src/matching_engine.cpp
+	src/ingestor.cpp
+	src/metrics.cpp
+)
+target_include_directories(elob_benchmark PRIVATE ${CMAKE_SOURCE_DIR}/include)
+target_compile_options(elob_benchmark PRIVATE -Wall -Wextra -Wpedantic)
