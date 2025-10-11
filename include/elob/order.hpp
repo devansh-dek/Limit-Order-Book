@@ -23,9 +23,11 @@ struct Order {
 
     // Reduce remaining by n, return filled amount (min)
     uint64_t fill(uint64_t n) noexcept {
+
         uint64_t taken = (n <= remaining) ? n : remaining;
         remaining -= taken;
         return taken;
+
     }
 
     bool is_filled() const noexcept { return remaining == 0; }

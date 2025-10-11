@@ -23,6 +23,8 @@ std::vector<Trade> EventIngestor::process(Event &ev) {
         } else if constexpr (std::is_same_v<T, Modify>) {
             book_.modify(payload.order_id, payload.new_price, payload.new_quantity, ev.timestamp);
         } else if constexpr (std::is_same_v<T, Trade>) {
+
+
             // trade event in ingestion stream: for now, no-op (could be used for verification/replay)
         } else {
             // monostate or unknown: ignore

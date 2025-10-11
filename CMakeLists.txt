@@ -104,3 +104,17 @@ add_executable(elob_bench_runner
 )
 target_include_directories(elob_bench_runner PRIVATE ${CMAKE_SOURCE_DIR}/include)
 target_compile_options(elob_bench_runner PRIVATE -Wall -Wextra -Wpedantic)
+add_executable(elob_test_mt
+    tests/test_mt.cpp
+    src/order.cpp
+    src/trade.cpp
+    src/event.cpp
+    src/price_level.cpp
+    src/order_book.cpp
+    src/matching_engine.cpp
+    src/ingestor.cpp
+    src/metrics.cpp
+)
+target_include_directories(elob_test_mt PRIVATE ${CMAKE_SOURCE_DIR}/include)
+target_compile_options(elob_test_mt PRIVATE -Wall -Wextra -Wpedantic)
+target_link_libraries(elob_test_mt PRIVATE pthread)
