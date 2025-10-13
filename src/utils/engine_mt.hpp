@@ -1,11 +1,11 @@
 // Thread-safe wrapper for matching engine (optional concurrency)
 #pragma once
 
-#include "elob/order_book.hpp"
-#include "elob/matching_engine.hpp"
-#include "elob/ingestor.hpp"
-#include "elob/trade.hpp"
-#include "elob/event.hpp"
+#include "engine/order_book.hpp"
+#include "engine/matching_engine.hpp"
+#include "data/ingestor.hpp"
+#include "engine/trade.hpp"
+#include "data/event.hpp"
 
 #include <mutex>
 #include <vector>

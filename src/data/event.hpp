@@ -1,8 +1,8 @@
 // Event model for EfficientLimitOrderBook
 #pragma once
 
-#include "elob/order.hpp"
-#include "elob/trade.hpp"
+#include "engine/order.hpp"
+#include "engine/trade.hpp"
 
 #include <variant>
 #include <cstdint>

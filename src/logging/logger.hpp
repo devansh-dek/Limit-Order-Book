@@ -1,8 +1,8 @@
 // Simple deterministic logger for events and trades
 #pragma once
 
-#include "elob/event.hpp"
-#include "elob/trade.hpp"
+#include "data/event.hpp"
+#include "engine/trade.hpp"
 
 #include <string>
 #include <fstream>
