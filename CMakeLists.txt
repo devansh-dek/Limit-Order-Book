@@ -103,3 +103,18 @@ add_executable(elob_test_mt
 )
 target_compile_options(elob_test_mt PRIVATE -Wall -Wextra -Wpedantic)
 target_link_libraries(elob_test_mt PRIVATE pthread)
+
+# Lock-free concurrency test
+add_executable(elob_test_lockfree
+    tests/concurrency/test_lockfree.cpp
+    src/engine/order.cpp
+    src/engine/trade.cpp
+    src/data/event.cpp
+    src/engine/price_level.cpp
+    src/engine/order_book.cpp
+    src/engine/matching_engine.cpp
+    src/data/ingestor.cpp
+    src/utils/metrics.cpp
+)
+target_compile_options(elob_test_lockfree PRIVATE -Wall -Wextra -Wpedantic)
+target_link_libraries(elob_test_lockfree PRIVATE pthread)
