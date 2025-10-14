@@ -19,7 +19,7 @@ namespace elob {
 // More scalable than mutex-based approach for this pattern
 class EngineLockFree {
 public:
-    EngineLockFree() 
+    EngineLockFree()
         : book_()
         , engine_(book_)
         , ingestor_(book_, engine_)
@@ -48,7 +48,7 @@ public:
         }
 
         running_.store(false, std::memory_order_release);
-        
+
         if (worker_thread_.joinable()) {
             worker_thread_.join();
         }
@@ -85,14 +85,14 @@ private:
     void worker_loop() {
         while (running_.load(std::memory_order_acquire)) {
             auto maybe_event = event_queue_.pop();
-            
+
             if (maybe_event.has_value()) {
                 processing_.store(true, std::memory_order_release);
-                
+
                 // Process event
                 ingestor_.process(maybe_event.value());
                 processed_count_.fetch_add(1, std::memory_order_relaxed);
-                
+
                 processing_.store(false, std::memory_order_release);
             } else {
                 // Queue empty, yield to avoid busy-wait

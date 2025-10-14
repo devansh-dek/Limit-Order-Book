@@ -27,7 +27,7 @@ public:
     bool push(const T& item) {
         const size_t current_tail = tail_.load(std::memory_order_relaxed);
         const size_t next_tail = increment(current_tail);
-        
+
         // Check if queue is full
         if (next_tail == head_.load(std::memory_order_acquire)) {
             return false;
@@ -35,7 +35,7 @@ public:
 
         // Write item
         storage_[current_tail] = item;
-        
+
         // Publish the write
         tail_.store(next_tail, std::memory_order_release);
         return true;
@@ -45,7 +45,7 @@ public:
     // Returns std::nullopt if queue is empty
     std::optional<T> pop() {
         const size_t current_head = head_.load(std::memory_order_relaxed);
-        
+
         // Check if queue is empty
         if (current_head == tail_.load(std::memory_order_acquire)) {
             return std::nullopt;
@@ -54,7 +54,7 @@ public:
         // Read item
         std::optional<T> item = storage_[current_head];
         storage_[current_head] = std::nullopt;  // Clear slot
-        
+
         // Publish the read
         head_.store(increment(current_head), std::memory_order_release);
         return item;
@@ -62,7 +62,7 @@ public:
 
     // Check if queue is empty (approximate, for monitoring only)
     bool empty() const {
-        return head_.load(std::memory_order_relaxed) == 
+        return head_.load(std::memory_order_relaxed) ==
                tail_.load(std::memory_order_relaxed);
     }
 
@@ -84,10 +84,10 @@ private:
     // Padding to prevent false sharing between head and tail
     alignas(64) std::atomic<size_t> head_;  // Consumer index
     char padding1_[64 - sizeof(std::atomic<size_t>)];
-    
+
     alignas(64) std::atomic<size_t> tail_;  // Producer index
     char padding2_[64 - sizeof(std::atomic<size_t>)];
-    
+
     // Ring buffer storage
     alignas(64) std::optional<T> storage_[Capacity];
 };

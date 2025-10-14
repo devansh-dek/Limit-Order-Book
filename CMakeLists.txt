@@ -118,3 +118,30 @@ add_executable(elob_test_lockfree
 )
 target_compile_options(elob_test_lockfree PRIVATE -Wall -Wextra -Wpedantic)
 target_link_libraries(elob_test_lockfree PRIVATE pthread)
+
+# Event parser test
+add_executable(elob_test_parser
+    tests/unit/test_parser.cpp
+    src/engine/order.cpp
+    src/engine/trade.cpp
+    src/data/event.cpp
+    src/engine/price_level.cpp
+    src/engine/order_book.cpp
+    src/engine/matching_engine.cpp
+    src/data/ingestor.cpp
+)
+target_compile_options(elob_test_parser PRIVATE -Wall -Wextra -Wpedantic)
+
+# Parser benchmark
+add_executable(elob_bench_parser
+    benchmarks/bench_parser.cpp
+    src/engine/order.cpp
+    src/engine/trade.cpp
+    src/data/event.cpp
+    src/engine/price_level.cpp
+    src/engine/order_book.cpp
+    src/engine/matching_engine.cpp
+    src/data/ingestor.cpp
+    src/utils/metrics.cpp
+)
+target_compile_options(elob_bench_parser PRIVATE -Wall -Wextra -Wpedantic)

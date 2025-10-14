@@ -1,0 +1,31 @@
+# Spread scenario: Orders with bid-ask spread
+# This tests depth management
+# Format: timestamp,order_id,side,price,quantity
+
+# Build bid side (BUY orders descending prices)
+0,1,BUY,9995,100
+1,2,BUY,9994,200
+2,3,BUY,9993,150
+3,4,BUY,9992,100
+4,5,BUY,9991,250
+
+# Build ask side (SELL orders ascending prices)
+5,100,SELL,10005,100
+6,101,SELL,10006,200
+7,102,SELL,10007,150
+8,103,SELL,10008,100
+9,104,SELL,10009,250
+
+# Add more depth
+10,6,BUY,9990,300
+11,7,BUY,9989,150
+12,105,SELL,10010,200
+13,106,SELL,10011,100
+
+# Cancel some orders
+CANCEL,2
+CANCEL,103
+
+# Add new orders
+14,8,BUY,9988,100
+15,107,SELL,10012,50

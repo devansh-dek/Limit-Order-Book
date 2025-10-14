@@ -1,0 +1,22 @@
+# Crossing scenario: Many orders at same price crossing
+# This tests order matching efficiency
+# Format: timestamp,order_id,side,price,quantity
+
+# Build up orders on the sell side at 10000
+0,100,SELL,10000,100
+1,101,SELL,10000,100
+2,102,SELL,10000,100
+3,103,SELL,10000,100
+4,104,SELL,10000,100
+
+# Send crossing BUY orders - should match against all SELL orders
+5,200,BUY,10000,100
+6,201,BUY,10000,100
+7,202,BUY,10000,100
+8,203,BUY,10000,100
+9,204,BUY,10000,100
+
+# Remaining orders
+10,205,BUY,9999,50
+11,206,SELL,10001,75
+12,207,BUY,10000,25
