@@ -2,7 +2,7 @@
 
 A **production-grade C++20 limit order book matching engine** demonstrating correctness, determinism, and low-latency execution critical for quantitative trading systems.
 
-## Features -
+## Features
 
 This implementation showcases core competencies required for **systematic trading, market microstructure analysis, and high-frequency trading infrastructure**:
 
@@ -10,7 +10,7 @@ This implementation showcases core competencies required for **systematic tradin
 - **Low-Latency Design**: Zero-copy data structures, cache-line optimized lock-free queues, minimal allocations
 - **Price-Time Priority**: Exchange-accurate matching semantics matching CME, NYSE, NASDAQ order books
 - **Correctness Under Stress**: Comprehensive test suite covering edge cases (partial fills, cross-book interactions, queue-jump prevention)
-- **Performance Engineering**: Benchmarked throughput (161K-684K events/sec), scalability analysis, profiling-driven optimizations
+- **Performance Engineering**: Measured throughput (1.34M–5.80M events/sec), scalability analysis, profiling-driven optimizations
 - **Production Patterns**: Event-driven architecture, deterministic replay for post-trade analysis, mutex and lock-free concurrency models
 
 ## Core Features (All Verified & Tested)
@@ -30,9 +30,9 @@ This implementation showcases core competencies required for **systematic tradin
 - **Variant-based events**: Type-safe `std::variant<NewOrder, Cancel, Modify, Trade>` with zero dynamic allocation
 
 ### ✅ Performance & Concurrency
-- **Single-threaded core**: Deterministic baseline (161K-684K events/sec measured)
+- **Single-threaded core**: Deterministic baseline (1.34M–5.80M events/sec measured)
 - **Mutex-based concurrency** (`EngineMultiThreaded`): Thread-safe wrapper with coarse-grained locking
-- **Lock-free SPSC queue** (`LockFreeQueue`): 16% throughput improvement at 100K+ events
+- **Lock-free SPSC queue** (`LockFreeQueue`): Alternative concurrency model with ring-buffer atomics
   - Cache-line padded atomics (prevents false sharing)
   - Memory ordering optimizations (acquire/release semantics)
   - Power-of-2 ring buffer (fast index wrapping)
@@ -59,9 +59,9 @@ This implementation showcases core competencies required for **systematic tradin
 ### Single-Threaded Throughput (Release Build, x86_64)
 | Scenario | N=1000 | N=10000 | N=50000 | Best |
 |----------|--------|---------|---------|------|
-| **same_price** | 204K ops/s | 273K ops/s | 330K ops/s | 330K |
-| **spread** | 161K ops/s | 212K ops/s | 254K ops/s | 254K |
-| **crossing** | 450K ops/s | 581K ops/s | 684K ops/s | **684K** |
+| **same_price** | 1.56M ops/s | 3.85M ops/s | 1.99M ops/s | 3.85M |
+| **spread** | 1.34M ops/s | 2.67M ops/s | 1.53M ops/s | 2.67M |
+| **crossing** | 2.74M ops/s | 5.80M ops/s | 3.19M ops/s | **5.80M** |
 
 - **same_price**: Alternating buy/sell at same price (high match rate)
 - **spread**: Bid-ask spread with depth (realistic book)
@@ -70,16 +70,16 @@ This implementation showcases core competencies required for **systematic tradin
 ### Concurrency Comparison (100K Events)
 | Implementation | Latency | Throughput | Speedup |
 |----------------|---------|------------|---------|
-| Single-threaded | 0.247s | 405K ops/s | 1.00x |
-| Mutex-based | 0.240s | 416K ops/s | 1.03x |
-| **Lock-free SPSC** | **0.207s** | **482K ops/s** | **1.19x** |
+| Single-threaded | 0.0284s | 3.52M ops/s | 1.00x |
+| Mutex-based | 0.0361s | 2.77M ops/s | 0.79x |
+| **Lock-free SPSC** | **0.0487s** | **2.05M ops/s** | **0.58x** |
 
 ### CSV Parser Throughput
 | File | Events | Trades | Throughput |
 |------|--------|--------|------------|
-| sample_orders.csv | 11 | 4 | 392K events/s |
-| crossing_orders.csv | 13 | 5 | 684K events/s |
-| spread_orders.csv | 18 | 0 | 500K events/s |
+| sample_orders.csv | 11 | 4 | 647K events/s |
+| crossing_orders.csv | 13 | 5 | 1.86M events/s |
+| spread_orders.csv | 18 | 0 | 1.64M events/s |
 
 ## Architecture Highlights (Quant-Relevant Design)
 
@@ -255,7 +255,7 @@ ingestor.process(modify_event);
 
 ### 2. Low-Latency Engineering
 - O(1) cancel/modify operations (critical for market-making)
-- Lock-free concurrency (16% throughput improvement at scale)
+- Lock-free concurrency (alternative to mutex with ring-buffer atomics)
 - Cache-aware data structures (64-byte alignment, false sharing prevention)
 - Zero-copy event processing with `std::variant`
 
@@ -269,7 +269,7 @@ ingestor.process(modify_event);
 - Quantitative benchmarking with statistical rigor
 - Scenario-based testing (different order flow characteristics)
 - Scalability analysis (1K → 50K events, concurrency models)
-- Profiling-driven optimization (measured 1.19x speedup with lock-free queue)
+- Deterministic baseline for comparison (single-threaded)
 
 ### 5. Production Engineering
 - Zero external dependencies (production-portable)
