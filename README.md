@@ -112,6 +112,185 @@ This implementation showcases core competencies required for **systematic tradin
 - **No randomness**: No `std::random_device`, no thread scheduling dependencies
 - **Replay verification**: Event log → deterministic trade sequence (100% reproducible)
 
+## Architecture & Diagrams
+
+### Core Component Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      Application                            │
+│              (tests, benchmarks, parsers)                   │
+└─────────────────────┬───────────────────────────────────────┘
+                      │
+                      ▼
+          ┌─────────────────────────┐
+          │   EventIngestor         │  ◄── Entry point
+          │  (deterministic dispatch)│     (std::visit pattern)
+          └──────┬──────────────────┘
+                 │
+         ┌───────┴────────┐
+         │                │
+         ▼                ▼
+  ┌─────────────────┐  ┌──────────────────┐
+  │   OrderBook     │  │  MatchingEngine  │
+  │  (Bid/Ask maps) │◄─┤  (price-time     │
+  │  (order index)  │  │   priority)      │
+  └────────┬────────┘  └──────────────────┘
+           │
+           ▼
+  ┌──────────────────┐
+  │  PriceLevel      │  ◄── FIFO queue
+  │ std::list<Order> │     (per price)
+  └──────────────────┘
+           │
+           ▼
+  ┌──────────────────┐
+  │  Trade output    │  ◄── Matched execution
+  │  (to logging)    │
+  └──────────────────┘
+```
+
+### Order Lifecycle Flow
+
+```
+NEW_ORDER Event
+    │
+    ▼
+[EventIngestor processes event]
+    │
+    ├─→ Check OrderBook for matches
+    │    │
+    │    ├─→ Yes: Execute against resting orders
+    │    │        Generate Trade(s)
+    │    │        Remove filled orders
+    │    │
+    │    └─→ No: Proceed to resting
+    │
+    ├─→ Residual quantity rests
+    │    │
+    │    └─→ Insert into OrderBook
+    │        at (side, price) level
+    │
+    └─→ Optional: Log trades to file
+         (for deterministic replay)
+
+CANCEL Event
+    │
+    ▼
+[Find order via index: O(1)]
+    │
+    ▼
+[Remove from PriceLevel]
+    │
+    ▼
+[Remove empty level]
+
+MODIFY Event
+    │
+    ▼
+[Lookup order: O(1)]
+    │
+    ├─→ Same price: Update quantity in-place [O(1)]
+    │
+    └─→ New price: Cancel + Re-insert [O(log P)]
+```
+
+### Concurrency Models Comparison
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                  CONCURRENCY MODELS                         │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  Single-Threaded                                            │
+│  ═════════════════════════════════════════════════════════  │
+│  Thread 1: [Event] → [Ingestor] → [Engine] → [Trade]       │
+│  Speed: Baseline (no sync overhead)                         │
+│                                                              │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  Mutex-Based (EngineMultiThreaded)                          │
+│  ═════════════════════════════════════════════════════════  │
+│  Thread 1,2,3: [Submit Event]                               │
+│                      ↓                                       │
+│                   [Mutex Lock]                              │
+│                      ↓                                       │
+│             [Serial: Ingestor → Engine]                     │
+│                      ↓                                       │
+│                 [Mutex Unlock]                              │
+│  Overhead: Contention (waits at lock)                       │
+│                                                              │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  Lock-Free SPSC (LockFreeQueue)                             │
+│  ═════════════════════════════════════════════════════════  │
+│  Producer Thread         │          Consumer Thread         │
+│       │                  │                 │                │
+│  [Submit Event]       [Ring Buffer]   [Process Event]       │
+│       │              (atomic indices)       │               │
+│       └──push──────→ [Event] [Event]  ←─pop──┘              │
+│                      atomic ops              │              │
+│  No locks, pure atomics                [Ingestor → Engine]  │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Performance Characteristics by Scenario
+
+```
+Throughput (measured on Release build)
+┌────────────────────────────────────────────────────────────┐
+│                                                            │
+│  5.80M ┤     crossing                                     │
+│  3.85M ├     same_price                                   │
+│  2.74M ├     crossing                                     │
+│  2.67M ├                    spread                        │
+│  1.99M ├     same_price                                   │
+│  1.56M ├  same_price                                      │
+│  1.53M ├                    spread                        │
+│  1.34M ├  spread                                          │
+│        ├──────┬──────────┬──────────────┬─────────        │
+│        │      │          │              │                 │
+│      1000   10000       50000       Best                   │
+│    Order Count                                            │
+│                                                            │
+│  Legend:                                                  │
+│  • same_price: high match rate (FIFO queue operations)   │
+│  • spread: realistic depth (map traversal)                │
+│  • crossing: aggressive orders (fast path execution)      │
+└────────────────────────────────────────────────────────────┘
+```
+
+### Data Structure Relationships
+
+```
+OrderBook (single instance)
+├── bids_: std::map<Price, PriceLevel> [descending]
+│   └── PriceLevel @ 10001
+│       └── std::list<Order>
+│           ├── Order(id=1, qty=100)
+│           ├── Order(id=2, qty=50)
+│           └── Order(id=3, qty=200)
+│
+├── asks_: std::map<Price, PriceLevel> [ascending]
+│   └── PriceLevel @ 10000
+│       └── std::list<Order>
+│           └── Order(id=4, qty=100)
+│
+└── order_index_: std::unordered_map<OrderID, Locator>
+    ├── 1 → {side=BUY, price=10001, iter→Order}
+    ├── 2 → {side=BUY, price=10001, iter→Order}
+    ├── 3 → {side=BUY, price=10001, iter→Order}
+    └── 4 → {side=SELL, price=10000, iter→Order}
+
+Matching Flow (for SELL order at 9999):
+  1. Lookup best BID (10001) from std::map ✓ found
+  2. Iterate Orders in FIFO from std::list
+  3. Match against Order 1 (qty 100) → TRADE
+  4. Match against Order 2 (qty 50) → TRADE
+  5. Remaining taker (qty=?): loop to next price or rest
+```
+
 ## Project Structure
 
 ```

@@ -2,7 +2,7 @@
 
 ## Overview
 
-EfficientLimitOrderBook is a deterministic, single-process limit order book matching engine designed for correctness, testability, and performance in that order. It demonstrates price-time priority matching with deterministic replay capabilities.
+LimitOrderBook is a deterministic, single-process limit order book matching engine designed for correctness, testability, and performance in that order. It demonstrates price-time priority matching with deterministic replay capabilities.
 
 ## Core Components
 
