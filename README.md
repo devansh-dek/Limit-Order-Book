@@ -345,7 +345,7 @@ cmake --build . -- -j$(nproc)
 
 # Concurrency tests
 ./elob_test_mt           # Mutex-based concurrent engine
-./elob_test_lockfree     # Lock-free SPSC queue benchmark
+./elob_test_concurrency  # Concurrency comparison (single-threaded, mutex, lock-free)
 
 # Parser tests
 ./elob_test_parser data/sample_orders.csv  # CSV order loading
