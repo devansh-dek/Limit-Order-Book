@@ -1,5 +1,6 @@
 #include "utils/engine_lockfree.hpp"
 #include "utils/engine_mt.hpp"
+#include "utils/engine_mpsc.hpp"
 #include "engine/order.hpp"
 #include "data/event.hpp"
 #include "utils/metrics.hpp"
@@ -49,6 +50,47 @@ double benchmark_lockfree(const std::vector<Event>& events) {
     }
 
     // Wait for all events to be processed
+    engine.drain();
+
+    auto end = std::chrono::high_resolution_clock::now();
+
+    engine.stop();
+
+    std::chrono::duration<double> elapsed = end - start;
+    return elapsed.count();
+}
+
+// Benchmark MPSC engine (many producers, single consumer)
+double benchmark_mpsc(const std::vector<Event>& events) {
+    EngineMPSC engine;
+    engine.start();
+
+    const unsigned num_producers = 4;
+    const size_t N = events.size();
+    std::vector<std::thread> producers;
+    producers.reserve(num_producers);
+
+    auto start = std::chrono::high_resolution_clock::now();
+
+    // Launch producers: each submits a contiguous slice of the events vector
+    for (unsigned p = 0; p < num_producers; ++p) {
+        producers.emplace_back([p, num_producers, N, &events, &engine]() {
+            size_t begin = (N * p) / num_producers;
+            size_t end = (N * (p + 1)) / num_producers;
+            for (size_t i = begin; i < end; ++i) {
+                const auto& ev = events[i];
+                while (!engine.submit(ev)) {
+                    // Queue full, retry
+                    std::this_thread::yield();
+                }
+            }
+        });
+    }
+
+    // Join producers
+    for (auto &t : producers) t.join();
+
+    // Wait for processing
     engine.drain();
 
     auto end = std::chrono::high_resolution_clock::now();
@@ -118,6 +160,12 @@ void run_comparison(size_t N) {
     double lf_throughput = N / lf_time;
     std::cout << " done" << std::endl;
 
+    // MPSC concurrent
+    std::cout << "Running MPSC concurrent..." << std::flush;
+    double mpsc_time = benchmark_mpsc(events);
+    double mpsc_throughput = N / mpsc_time;
+    std::cout << " done" << std::endl;
+
     // Results
     std::cout << "\n--- Results ---" << std::endl;
     std::cout << std::fixed << std::setprecision(6);
@@ -136,8 +184,16 @@ void run_comparison(size_t N) {
     std::cout << "  Throughput: " << std::setprecision(0) << lf_throughput << " ops/s" << std::endl;
     std::cout << "  Speedup:    " << std::setprecision(2) << (st_time / lf_time) << "x" << std::endl;
 
+    std::cout << "\nMPSC:" << std::endl;
+    std::cout << "  Time:       " << std::setprecision(6) << mpsc_time << " s" << std::endl;
+    std::cout << "  Throughput: " << std::setprecision(0) << mpsc_throughput << " ops/s" << std::endl;
+    std::cout << "  Speedup:    " << std::setprecision(2) << (st_time / mpsc_time) << "x" << std::endl;
+
     std::cout << "\nLock-free vs Mutex:" << std::endl;
     std::cout << "  Improvement: " << std::setprecision(2) << (mutex_time / lf_time) << "x" << std::endl;
+
+    std::cout << "\nMPSC vs Mutex:" << std::endl;
+    std::cout << "  Improvement: " << std::setprecision(2) << (mutex_time / mpsc_time) << "x" << std::endl;
 
     std::cout << std::endl;
 }
