@@ -44,8 +44,15 @@ void MatchingEngine::match_buy(Order& taker, uint64_t timestamp, std::vector<Tra
             out_trades.emplace_back(next_trade_id_++, maker.order_id, taker.order_id,
                                     slot_price, qty, timestamp);
 
-            if (maker.is_filled())
-                book_.erase_from_ask_slot(slot, idx);
+            if (maker.is_filled()) {
+                if (maker.is_iceberg() && maker.reserve_qty > 0) {
+                    // Replenish: next slice goes to tail (loses time priority).
+                    uint64_t new_display = min_u64(maker.peak_size, maker.reserve_qty);
+                    book_.replenish_ask(slot, idx, new_display);
+                } else {
+                    book_.erase_from_ask_slot(slot, idx);
+                }
+            }
 
             idx = next_idx;
         }
@@ -90,8 +97,14 @@ void MatchingEngine::match_sell(Order& taker, uint64_t timestamp, std::vector<Tr
             out_trades.emplace_back(next_trade_id_++, maker.order_id, taker.order_id,
                                     slot_price, qty, timestamp);
 
-            if (maker.is_filled())
-                book_.erase_from_bid_slot(slot, idx);
+            if (maker.is_filled()) {
+                if (maker.is_iceberg() && maker.reserve_qty > 0) {
+                    uint64_t new_display = min_u64(maker.peak_size, maker.reserve_qty);
+                    book_.replenish_bid(slot, idx, new_display);
+                } else {
+                    book_.erase_from_bid_slot(slot, idx);
+                }
+            }
 
             idx = next_idx;
         }

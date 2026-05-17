@@ -147,8 +147,41 @@ bool OrderBook::has_level(Side side, Price price) const {
 uint64_t OrderBook::available_to_fill(Side side, Price price_limit) const {
     // Buy taker crosses asks (price_limit = max willing to pay).
     // Sell taker crosses bids (price_limit = min willing to accept).
+    // Note: total_qty tracks displayed qty only; iceberg hidden qty is excluded.
     if (side == Side::Buy) return asks_.fillable_qty(price_limit);
     else                   return bids_.fillable_qty(price_limit);
+}
+
+// Shared replenishment logic: update order fields, adjust total_qty, move to tail.
+static void replenish_in_slot(OrderPool& pool, LadderSlot* slot,
+                               int32_t pool_idx, uint64_t new_display) {
+    PooledOrder& po    = pool.at(pool_idx);
+    Order&       maker = po.data;
+    maker.reserve_qty -= new_display;
+    maker.remaining    = new_display;
+    slot->total_qty   += new_display;
+
+    // If there are orders behind this one, move it to the tail.
+    // A single-order slot is already at head == tail; no link changes needed.
+    if (po.next != -1) {
+        int32_t next = po.next;
+        // Detach from head
+        pool.at(next).prev = -1;
+        slot->head = next;
+        // Append at tail
+        pool.at(slot->tail).next = pool_idx;
+        po.prev = slot->tail;
+        po.next = -1;
+        slot->tail = pool_idx;
+    }
+}
+
+void OrderBook::replenish_bid(LadderSlot* slot, int32_t pool_idx, uint64_t new_display) {
+    replenish_in_slot(pool_, slot, pool_idx, new_display);
+}
+
+void OrderBook::replenish_ask(LadderSlot* slot, int32_t pool_idx, uint64_t new_display) {
+    replenish_in_slot(pool_, slot, pool_idx, new_display);
 }
 
 } // namespace elob

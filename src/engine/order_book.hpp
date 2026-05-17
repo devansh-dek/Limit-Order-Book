@@ -39,6 +39,12 @@ public:
     void erase_from_bid_slot(LadderSlot* slot, int32_t pool_idx);
     void erase_from_ask_slot(LadderSlot* slot, int32_t pool_idx);
 
+    // Iceberg replenishment: set maker.remaining = new_display, deduct from reserve_qty,
+    // add new_display to slot->total_qty, and move order to tail of the slot's queue
+    // (loses time priority — standard exchange behaviour). Does NOT change slot->count.
+    void replenish_bid(LadderSlot* slot, int32_t pool_idx, uint64_t new_display);
+    void replenish_ask(LadderSlot* slot, int32_t pool_idx, uint64_t new_display);
+
     // Query helpers used by tests and the L2 publisher (replaces the old find_level API).
     uint64_t qty_at(Side side, Price price) const;
     bool     has_level(Side side, Price price) const;
