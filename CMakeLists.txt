@@ -34,8 +34,9 @@ add_executable(elob_test_stp           tests/unit/test_stp.cpp            ${ELOB
 add_executable(elob_test_iceberg       tests/unit/test_iceberg.cpp        ${ELOB_CORE})
 add_executable(elob_test_l2            tests/unit/test_l2.cpp             ${ELOB_CORE})
 add_executable(elob_test_wal           tests/unit/test_wal.cpp            ${ELOB_CORE} src/logging/wal_logger.cpp)
+add_executable(elob_test_histogram     tests/unit/test_histogram.cpp      src/utils/latency_histogram.cpp)
 
-foreach(t elob_test_cancel elob_test_edgecases elob_test_ingest elob_test_parser elob_test_market_orders elob_test_stp elob_test_iceberg elob_test_l2 elob_test_wal)
+foreach(t elob_test_cancel elob_test_edgecases elob_test_ingest elob_test_parser elob_test_market_orders elob_test_stp elob_test_iceberg elob_test_l2 elob_test_wal elob_test_histogram)
     target_compile_options(${t} PRIVATE -Wall -Wextra -Wpedantic)
 endforeach()
 
@@ -49,7 +50,7 @@ target_compile_options(elob_test_replay PRIVATE -Wall -Wextra -Wpedantic)
 
 # Benchmarks
 add_executable(elob_benchmark    benchmarks/test_benchmark.cpp ${ELOB_CORE} src/utils/metrics.cpp)
-add_executable(elob_bench_runner benchmarks/bench_runner.cpp   ${ELOB_CORE} src/utils/metrics.cpp)
+add_executable(elob_bench_runner benchmarks/bench_runner.cpp   ${ELOB_CORE} src/utils/metrics.cpp src/utils/latency_histogram.cpp)
 add_executable(elob_bench_parser benchmarks/bench_parser.cpp   ${ELOB_CORE} src/utils/metrics.cpp)
 
 foreach(t elob_benchmark elob_bench_runner elob_bench_parser)
