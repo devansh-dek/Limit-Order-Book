@@ -144,6 +144,13 @@ bool OrderBook::has_level(Side side, Price price) const {
     return slot && slot->count > 0;
 }
 
+int OrderBook::top_bids(int n, int64_t* prices, uint64_t* qtys) const {
+    return bids_.top_levels(n, prices, qtys);
+}
+int OrderBook::top_asks(int n, int64_t* prices, uint64_t* qtys) const {
+    return asks_.top_levels(n, prices, qtys);
+}
+
 uint64_t OrderBook::available_to_fill(Side side, Price price_limit) const {
     // Buy taker crosses asks (price_limit = max willing to pay).
     // Sell taker crosses bids (price_limit = min willing to accept).

@@ -17,6 +17,7 @@ set(ELOB_CORE
     src/engine/order_book.cpp
     src/engine/matching_engine.cpp
     src/data/ingestor.cpp
+    src/marketdata/l2_publisher.cpp
 )
 
 # Main executable
@@ -31,8 +32,9 @@ add_executable(elob_test_parser        tests/unit/test_parser.cpp         ${ELOB
 add_executable(elob_test_market_orders tests/unit/test_market_orders.cpp  ${ELOB_CORE})
 add_executable(elob_test_stp           tests/unit/test_stp.cpp            ${ELOB_CORE})
 add_executable(elob_test_iceberg       tests/unit/test_iceberg.cpp        ${ELOB_CORE})
+add_executable(elob_test_l2            tests/unit/test_l2.cpp             ${ELOB_CORE})
 
-foreach(t elob_test_cancel elob_test_edgecases elob_test_ingest elob_test_parser elob_test_market_orders elob_test_stp elob_test_iceberg)
+foreach(t elob_test_cancel elob_test_edgecases elob_test_ingest elob_test_parser elob_test_market_orders elob_test_stp elob_test_iceberg elob_test_l2)
     target_compile_options(${t} PRIVATE -Wall -Wextra -Wpedantic)
 endforeach()
 

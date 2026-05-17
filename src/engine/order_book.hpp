@@ -53,6 +53,11 @@ public:
     // Used by the matching engine for FOK pre-check without touching the book.
     uint64_t available_to_fill(Side side, Price price_limit) const;
 
+    // Fill parallel arrays with up to n non-empty levels, best-first.
+    // Returns count written. Used by L2Publisher to build snapshots.
+    int top_bids(int n, int64_t* out_prices, uint64_t* out_qtys) const;
+    int top_asks(int n, int64_t* out_prices, uint64_t* out_qtys) const;
+
 private:
     PriceLadder bids_;   // is_bid = true
     PriceLadder asks_;   // is_bid = false

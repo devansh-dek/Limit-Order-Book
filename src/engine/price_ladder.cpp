@@ -50,6 +50,32 @@ void PriceLadder::on_erase(int32_t slot_idx, bool became_empty) {
     }
 }
 
+int PriceLadder::top_levels(int n, int64_t* out_prices, uint64_t* out_qtys) const {
+    if (best_slot_ == -1 || n <= 0) return 0;
+    int     written = 0;
+    int32_t sz      = static_cast<int32_t>(slots_.size());
+    if (is_bid_) {
+        for (int32_t i = best_slot_; i >= 0 && written < n; --i) {
+            const LadderSlot& s = slots_[static_cast<size_t>(i)];
+            if (s.count > 0) {
+                out_prices[written] = price_of(i);
+                out_qtys[written]   = s.total_qty;
+                ++written;
+            }
+        }
+    } else {
+        for (int32_t i = best_slot_; i < sz && written < n; ++i) {
+            const LadderSlot& s = slots_[static_cast<size_t>(i)];
+            if (s.count > 0) {
+                out_prices[written] = price_of(i);
+                out_qtys[written]   = s.total_qty;
+                ++written;
+            }
+        }
+    }
+    return written;
+}
+
 uint64_t PriceLadder::fillable_qty(int64_t price_limit) const {
     if (best_slot_ == -1) return 0;
     uint64_t total = 0;

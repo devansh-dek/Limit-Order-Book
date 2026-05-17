@@ -26,6 +26,10 @@ public:
     // Best active slot; nullptr if the ladder is empty.
     LadderSlot* best();
 
+    // Fill out_prices/out_qtys with up to n non-empty levels, best-first.
+    // Returns number of levels written. Used by L2Publisher.
+    int top_levels(int n, int64_t* out_prices, uint64_t* out_qtys) const;
+
     // Sum of total_qty across all slots at prices at-or-better than price_limit.
     // For asks (is_bid=false): slots with price <= price_limit.
     // For bids (is_bid=true):  slots with price >= price_limit.
