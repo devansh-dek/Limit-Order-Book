@@ -1,329 +1,216 @@
-# Limit Order Book
+# Efficient Limit Order Book
 
-A **production-grade C++20 limit order book matching engine** demonstrating correctness, determinism, and low-latency execution critical for quantitative trading systems.
+A **production-grade C++20 matching engine** demonstrating the data structures, algorithms, and infrastructure used in real exchange and HFT systems.
 
 ## Features
 
-This implementation showcases core competencies required for **systematic trading, market microstructure analysis, and high-frequency trading infrastructure**:
+- **Flat price ladder** — O(1) price-level lookup via `vector<LadderSlot>` indexed by tick offset (replaces `std::map`)
+- **Pool-allocated intrusive order list** — zero heap allocation on the hot path; orders live in a pre-allocated `OrderPool`
+- **Price-time priority matching** — exchange-accurate FIFO semantics within each price level
+- **IOC / FOK order types** — Immediate-or-Cancel discards residual; Fill-or-Kill aborts via pre-match availability check
+- **Self-Trade Prevention (STP)** — three modes: CancelNewest, CancelOldest, CancelBoth; keyed on `participant_id`
+- **Iceberg orders** — display slice only; reserve replenished to tail after each fill (loses time priority on replenishment)
+- **L2 market data publisher** — top-5 bid/ask snapshot with monotone `seq_num` for gap detection
+- **Binary write-ahead log (WAL)** — fixed 40-byte packed records, 4 KB batched `write()`, ~2 ns/record amortized
+- **rdtsc latency histograms** — TSC-based per-event timing, TSC calibrated against `CLOCK_MONOTONIC`; p50/p99/p99.9 percentiles
+- **Pre-trade validator** — 6 reject reasons (SEC Rule 15c3-5 style), O(1) duplicate/unknown-ID checks, monotonic timestamp enforcement
+- **SPSC / MPSC concurrency** — lock-free single-producer ring buffer for single-gateway pipelines; mutex-based MPSC for multi-gateway
 
-- **Deterministic Execution**: 100% reproducible trade outcomes from event logs—critical for backtesting, compliance, and risk analysis
-- **Low-Latency Design**: Zero-copy data structures, cache-line optimized lock-free queues, minimal allocations
-- **Price-Time Priority**: Exchange-accurate matching semantics matching CME, NYSE, NASDAQ order books
-- **Correctness Under Stress**: Comprehensive test suite covering edge cases (partial fills, cross-book interactions, queue-jump prevention)
-- **Performance Engineering**: Measured throughput (1.34M–5.80M events/sec), scalability analysis, profiling-driven optimizations
-- **Production Patterns**: Event-driven architecture, deterministic replay for post-trade analysis, mutex and lock-free concurrency models
+## Measured Performance (Release Build, x86_64)
 
-## Core Features (All Verified & Tested)
+Benchmarked with `rdtsc` per-event timing, TSC calibrated to 2.12 GHz.
 
-### ✅ Matching Engine
-- **Price-time priority matching** with partial fills (FIFO within price level)
-- **O(1) order cancel/modify** via order ID index (critical for HFT strategies)
-- **Deterministic trade generation** with logical timestamps (no system clock dependencies)
-- **Supports**: Market orders, limit orders, cancel, modify operations
-- **Data structures**: `std::map` for price levels (log P insertion), `std::list` for stable iterators
+### Throughput & Latency (N = 50 000 events)
 
-### ✅ Determinism & Correctness
-- **Deterministic replay**: Same event sequence → identical trade outcomes (100% reproducible)
-- **Event logging**: Text-based event/trade logs for post-trade analysis and debugging
-- **Replay verification**: `elob_test_replay` validates determinism across runs
-- **Integer pricing**: `int64_t` prices avoid floating-point non-determinism (common in HFT)
-- **Variant-based events**: Type-safe `std::variant<NewOrder, Cancel, Modify, Trade>` with zero dynamic allocation
+| Scenario | ops/s | p50 | p99 | p99.9 |
+|----------|-------|-----|-----|-------|
+| **crossing** | **2.05M** | **315 ns** | **1.3 µs** | **2.2 µs** |
+| same_price | 1.85M | 431 ns | 1.3 µs | 2.3 µs |
+| spread | 1.27M | 549 ns | 3.4 µs | 7.6 µs |
 
-### ✅ Performance & Concurrency
-- **Single-threaded core**: Deterministic baseline (1.34M–5.80M events/sec measured)
-- **Mutex-based concurrency** (`EngineMultiThreaded`): Thread-safe wrapper with coarse-grained locking
-- **Lock-free SPSC queue** (`LockFreeQueue`): Alternative concurrency model with ring-buffer atomics
-  - Cache-line padded atomics (prevents false sharing)
-  - Memory ordering optimizations (acquire/release semantics)
-  - Power-of-2 ring buffer (fast index wrapping)
-- **Benchmark infrastructure**: CSV output, Python visualization, scenario-based testing
+- **crossing**: aggressive orders that always match (fast-path through matching loop)
+- **same_price**: alternating buy/sell at one price (high match rate, iceberg-free)
+- **spread**: realistic depth-building with a bid-ask spread (more book traversal)
 
-### ✅ Testing & Validation
-- **9 test executables** covering:
-  - Unit tests (cancel, modify, edge cases, ingestion)
-  - Replay verification (determinism validation)
-  - Concurrency tests (mutex and lock-free)
-  - Parser tests (CSV order file loading)
-  - Benchmarks (throughput, scalability, trade statistics)
-- **Sample order files**: Realistic CSV scenarios (crossing orders, spread management, mixed workloads)
-- **Metrics collection**: Trade counts, latency histograms (future), throughput analysis
+### Throughput by Scale
 
-### ✅ Extensibility
-- **Event parser**: CSV order file loader (392K-684K events/sec parsing)
-- **Zero external dependencies**: C++20 standard library only (production-portable)
-- **Clean architecture**: Separation of data layer (events) and engine layer (matching logic)
-- **Documentation**: Architecture diagrams, API reference, 15-phase implementation log
+| Scenario | N = 1 000 | N = 10 000 | N = 50 000 |
+|----------|-----------|------------|------------|
+| same_price | 2.19M ops/s | 1.22M ops/s | 1.85M ops/s |
+| spread | 1.37M ops/s | 0.90M ops/s | 1.27M ops/s |
+| crossing | 2.18M ops/s | 2.08M ops/s | 2.05M ops/s |
 
-## Measured Performance (Verified Benchmarks)
+### WAL Overhead
+- Amortized cost: ~2 ns/record (4 096-record batch, single `write()` syscall)
+- vs per-event `fsync`: ~20 µs — 10 000× slower
 
-### Single-Threaded Throughput (Release Build, x86_64)
-| Scenario | N=1000 | N=10000 | N=50000 | Best |
-|----------|--------|---------|---------|------|
-| **same_price** | 1.56M ops/s | 3.85M ops/s | 1.99M ops/s | 3.85M |
-| **spread** | 1.34M ops/s | 2.67M ops/s | 1.53M ops/s | 2.67M |
-| **crossing** | 2.74M ops/s | 5.80M ops/s | 3.19M ops/s | **5.80M** |
+## Architecture
 
-- **same_price**: Alternating buy/sell at same price (high match rate)
-- **spread**: Bid-ask spread with depth (realistic book)
-- **crossing**: Aggressive crossing orders (peak throughput)
+### Core Pipeline
 
-### Concurrency Comparison (100K Events)
-| Implementation | Latency | Throughput | Speedup |
-|----------------|---------|------------|---------|
-| Single-threaded | 0.0284s | 3.52M ops/s | 1.00x |
-| Mutex-based | 0.0361s | 2.77M ops/s | 0.79x |
-| **Lock-free SPSC** | **0.0487s** | **2.05M ops/s** | **0.58x** |
+```
+                   ┌──────────────┐
+ raw event ──────► │  Validator   │ reject → caller (RejectReason)
+                   └──────┬───────┘
+                           │ pass
+                           ▼
+                   ┌──────────────┐
+                   │EventIngestor │  std::visit dispatch
+                   └──┬───────┬───┘
+                      │       │
+               NewOrder│       │Cancel / Modify
+                      ▼       ▼
+              ┌──────────────────┐
+              │  MatchingEngine  │  IOC / FOK / STP logic
+              └────────┬─────────┘
+                       │ taker fills / rests
+                       ▼
+              ┌──────────────────┐
+              │    OrderBook     │  flat PriceLadder × 2 (bids, asks)
+              │  + order_index_  │  O(1) insert / cancel / modify
+              └────────┬─────────┘
+                       │
+          ┌────────────┴──────────────┐
+          │                           │
+          ▼                           ▼
+  ┌──────────────┐           ┌──────────────────┐
+  │  L2Publisher │           │   WalLogger      │
+  │ seq-stamped  │           │ 40-byte records  │
+  │ top-5 snap   │           │ 4 KB batch write │
+  └──────────────┘           └──────────────────┘
+```
 
-### CSV Parser Throughput
-| File | Events | Trades | Throughput |
-|------|--------|--------|------------|
-| sample_orders.csv | 11 | 4 | 647K events/s |
-| crossing_orders.csv | 13 | 5 | 1.86M events/s |
-| spread_orders.csv | 18 | 0 | 1.64M events/s |
+### Data Structures
 
-## Architecture Highlights (Quant-Relevant Design)
+| Layer | Structure | Key property |
+|-------|-----------|--------------|
+| Price index | `vector<LadderSlot>` (flat array) | O(1) lookup by `(price − base) / tick` |
+| Order storage | `OrderPool` — flat `PooledOrder[]` | Zero heap alloc on hot path; intrusive prev/next |
+| Order queue | Intrusive doubly-linked list in pool | O(1) FIFO insert / erase; no iterator invalidation |
+| Order index | `unordered_map<OrderID, Locator>` | O(1) cancel, modify, STP lookup |
+| Active-level tracker | `active_count_` + `best_slot_` | Skip O(N) scan when book is empty; O(1) best bid/ask |
 
-### Data Structures (Exchange-Accurate)
-- **Price levels**: `std::map<Price, PriceLevel>` with custom comparators
-  - Bids: Descending order (highest first)
-  - Asks: Ascending order (lowest first)
-- **Orders within level**: `std::list<Order>` for FIFO queue + stable iterators
-- **Order index**: `std::unordered_map<OrderID, iterator>` for O(1) cancel/modify
-- **Integer prices**: No floating-point to avoid non-determinism (critical for quant backtesting)
+### Complexity
 
-### Complexity (Algorithmic Guarantees)
 | Operation | Complexity | Notes |
 |-----------|------------|-------|
-| Insert limit order | O(log P) | P = number of price levels |
-| Match order | O(M) | M = orders matched (amortized O(1) per match) |
-| Cancel order | **O(1)** | Via order ID index (critical for HFT) |
-| Modify order (same price) | **O(1)** | In-place quantity update |
-| Modify order (price change) | O(log P) | Cancel + reinsert |
-| Best bid/ask lookup | **O(1)** | Iterator to map begin/end |
+| Insert limit order | **O(1)** | Flat ladder; pool append |
+| Match one level | O(M) | M = orders matched |
+| Cancel order | **O(1)** | `order_index_` lookup + intrusive erase |
+| Modify (same price) | **O(1)** | In-place qty update |
+| Modify (price change) | **O(1)** | Cancel + re-insert (both O(1) on flat ladder) |
+| Best bid/ask | **O(1)** | `best_slot_` maintained on every insert/erase |
+| FOK pre-check | O(L) | L = levels at-or-better; sums `total_qty` |
+| L2 snapshot (top-5) | O(5) = O(1) | Walk from `best_slot_` |
 
-### Concurrency Models
-1. **Single-threaded**: Deterministic baseline, no synchronization overhead
-2. **Mutex-based**: `std::mutex` + `std::lock_guard`, simple but contended at high throughput
-3. **Lock-free SPSC**: Producer submits events, consumer processes (16% faster at 100K+ load)
+### Order Types
 
-### Determinism Guarantees (Critical for Backtesting)
-- **Logical timestamps**: Caller-provided, no `std::chrono` or system clock
-- **Deterministic iteration**: `std::map` and `std::list` guarantee stable ordering
-- **No randomness**: No `std::random_device`, no thread scheduling dependencies
-- **Replay verification**: Event log → deterministic trade sequence (100% reproducible)
+| Type | Behaviour |
+|------|-----------|
+| Limit | Match up to price; rest residual |
+| IOC | Match immediately; discard residual |
+| FOK | Pre-check available qty ≥ order qty; match or reject entirely |
+| Iceberg | Display `peak_size` only; replenish from reserve after each fill (tail position) |
 
-## Architecture & Diagrams
+### STP Modes (`participant_id` match)
 
-### Core Component Architecture
+| Mode | Effect |
+|------|--------|
+| `CancelNewest` | Taker is cancelled; maker rests |
+| `CancelOldest` | Maker is removed; taker continues |
+| `CancelBoth` | Both sides cancelled |
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      Application                            │
-│              (tests, benchmarks, parsers)                   │
-└─────────────────────┬───────────────────────────────────────┘
-                      │
-                      ▼
-          ┌─────────────────────────┐
-          │   EventIngestor         │  ◄── Entry point
-          │  (deterministic dispatch)│     (std::visit pattern)
-          └──────┬──────────────────┘
-                 │
-         ┌───────┴────────┐
-         │                │
-         ▼                ▼
-  ┌─────────────────┐  ┌──────────────────┐
-  │   OrderBook     │  │  MatchingEngine  │
-  │  (Bid/Ask maps) │◄─┤  (price-time     │
-  │  (order index)  │  │   priority)      │
-  └────────┬────────┘  └──────────────────┘
-           │
-           ▼
-  ┌──────────────────┐
-  │  PriceLevel      │  ◄── FIFO queue
-  │ std::list<Order> │     (per price)
-  └──────────────────┘
-           │
-           ▼
-  ┌──────────────────┐
-  │  Trade output    │  ◄── Matched execution
-  │  (to logging)    │
-  └──────────────────┘
-```
+### Concurrency
 
-### Order Lifecycle Flow
+| Model | Use case | Implementation |
+|-------|----------|----------------|
+| Single-threaded | Baseline, deterministic replay | No synchronisation |
+| Lock-free SPSC | Single gateway → engine pipeline | `LockFreeQueue`: alignas(64) atomic head/tail, power-of-2 ring |
+| Mutex MPSC | Multiple gateways → one engine | `EngineMultiThreaded`: `std::mutex` + `lock_guard` |
+
+The engine core is inherently single-threaded (exchange matching is serial). Concurrency models govern how events are routed from producers to that single core.
+
+### Pre-trade Validation
+
+`Validator` sits in front of `EventIngestor` (opt-in; `nullptr` = disabled):
+
+| Reject reason | Condition |
+|---------------|-----------|
+| `InvalidPrice` | price ≤ 0 |
+| `PriceOutOfRange` | price outside `[min_price, max_price]` |
+| `InvalidQuantity` | quantity == 0 |
+| `DuplicateOrderId` | ID already live in `order_index_` |
+| `UnknownOrderId` | Cancel/Modify targets non-existent ID |
+| `TimestampNotMonotonic` | `ev.timestamp < last_seen` |
+
+### WAL Record Layout (40 bytes, packed)
 
 ```
-NEW_ORDER Event
-    │
-    ▼
-[EventIngestor processes event]
-    │
-    ├─→ Check OrderBook for matches
-    │    │
-    │    ├─→ Yes: Execute against resting orders
-    │    │        Generate Trade(s)
-    │    │        Remove filled orders
-    │    │
-    │    └─→ No: Proceed to resting
-    │
-    ├─→ Residual quantity rests
-    │    │
-    │    └─→ Insert into OrderBook
-    │        at (side, price) level
-    │
-    └─→ Optional: Log trades to file
-         (for deterministic replay)
-
-CANCEL Event
-    │
-    ▼
-[Find order via index: O(1)]
-    │
-    ▼
-[Remove from PriceLevel]
-    │
-    ▼
-[Remove empty level]
-
-MODIFY Event
-    │
-    ▼
-[Lookup order: O(1)]
-    │
-    ├─→ Same price: Update quantity in-place [O(1)]
-    │
-    └─→ New price: Cancel + Re-insert [O(log P)]
+Offset  Size  Field
+0       1     rtype (NewOrder=1, Cancel=2, Modify=3, Trade=4)
+1       1     side
+2       2     reserved
+4       4     seq
+8       8     id_a
+16      8     id_b
+24      8     price
+32      8     quantity
 ```
-
-### Concurrency Models Comparison
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                  CONCURRENCY MODELS                         │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  Single-Threaded                                            │
-│  ═════════════════════════════════════════════════════════  │
-│  Thread 1: [Event] → [Ingestor] → [Engine] → [Trade]       │
-│  Speed: Baseline (no sync overhead)                         │
-│                                                              │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  Mutex-Based (EngineMultiThreaded)                          │
-│  ═════════════════════════════════════════════════════════  │
-│  Thread 1,2,3: [Submit Event]                               │
-│                      ↓                                       │
-│                   [Mutex Lock]                              │
-│                      ↓                                       │
-│             [Serial: Ingestor → Engine]                     │
-│                      ↓                                       │
-│                 [Mutex Unlock]                              │
-│  Overhead: Contention (waits at lock)                       │
-│                                                              │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  Lock-Free SPSC (LockFreeQueue)                             │
-│  ═════════════════════════════════════════════════════════  │
-│  Producer Thread         │          Consumer Thread         │
-│       │                  │                 │                │
-│  [Submit Event]       [Ring Buffer]   [Process Event]       │
-│       │              (atomic indices)       │               │
-│       └──push──────→ [Event] [Event]  ←─pop──┘              │
-│                      atomic ops              │              │
-│  No locks, pure atomics                [Ingestor → Engine]  │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Performance Characteristics by Scenario
-
-```
-Throughput (measured on Release build)
-┌────────────────────────────────────────────────────────────┐
-│                                                            │
-│  5.80M ┤     crossing                                     │
-│  3.85M ├     same_price                                   │
-│  2.74M ├     crossing                                     │
-│  2.67M ├                    spread                        │
-│  1.99M ├     same_price                                   │
-│  1.56M ├  same_price                                      │
-│  1.53M ├                    spread                        │
-│  1.34M ├  spread                                          │
-│        ├──────┬──────────┬──────────────┬─────────        │
-│        │      │          │              │                 │
-│      1000   10000       50000       Best                   │
-│    Order Count                                            │
-│                                                            │
-│  Legend:                                                  │
-│  • same_price: high match rate (FIFO queue operations)   │
-│  • spread: realistic depth (map traversal)                │
-│  • crossing: aggressive orders (fast path execution)      │
-└────────────────────────────────────────────────────────────┘
-```
-
-### Data Structure Relationships
-
-```
-OrderBook (single instance)
-├── bids_: std::map<Price, PriceLevel> [descending]
-│   └── PriceLevel @ 10001
-│       └── std::list<Order>
-│           ├── Order(id=1, qty=100)
-│           ├── Order(id=2, qty=50)
-│           └── Order(id=3, qty=200)
-│
-├── asks_: std::map<Price, PriceLevel> [ascending]
-│   └── PriceLevel @ 10000
-│       └── std::list<Order>
-│           └── Order(id=4, qty=100)
-│
-└── order_index_: std::unordered_map<OrderID, Locator>
-    ├── 1 → {side=BUY, price=10001, iter→Order}
-    ├── 2 → {side=BUY, price=10001, iter→Order}
-    ├── 3 → {side=BUY, price=10001, iter→Order}
-    └── 4 → {side=SELL, price=10000, iter→Order}
-
-Matching Flow (for SELL order at 9999):
-  1. Lookup best BID (10001) from std::map ✓ found
-  2. Iterate Orders in FIFO from std::list
-  3. Match against Order 1 (qty 100) → TRADE
-  4. Match against Order 2 (qty 50) → TRADE
-  5. Remaining taker (qty=?): loop to next price or rest
-```
+Writes are batched in a 4 096-record buffer; one `write()` syscall per flush.
 
 ## Project Structure
 
 ```
-├── src/
-│   ├── engine/          # Core matching logic
-│   │   ├── order.cpp/hpp           # Order model with fill() semantics
-│   │   ├── trade.cpp/hpp           # Trade record
-│   │   ├── price_level.cpp/hpp     # FIFO queue at each price
-│   │   ├── order_book.cpp/hpp      # Bid/ask maps + order index
-│   │   └── matching_engine.cpp/hpp # Price-time priority matching
-│   ├── data/            # Event model & ingestion
-│   │   ├── event.cpp/hpp           # std::variant-based events
-│   │   └── ingestor.cpp/hpp        # Event processing entry point
-│   ├── logging/         # Deterministic logging
-│   │   ├── logger.cpp/hpp          # Event/trade log writer
-│   │   └── replay.cpp/hpp          # Log replay utilities
-│   └── utils/           # Performance & concurrency
-│       ├── metrics.cpp/hpp         # Throughput/latency metrics
-│       ├── event_parser.hpp        # CSV order file loader
-│       ├── engine_mt.hpp           # Mutex-based concurrent wrapper
-│       ├── engine_lockfree.hpp     # Lock-free concurrent wrapper
-│       └── lockfree_queue.hpp      # SPSC ring buffer
-├── tests/
-│   ├── unit/            # 5 unit test executables
-│   ├── replay/          # Determinism verification
-│   └── concurrency/     # Mutex & lock-free benchmarks
-├── benchmarks/          # 3 benchmark executables + CSV output
-├── data/                # Sample CSV order files
-├── scripts/             # Python analysis (matplotlib, pandas)
-├── docs/
-│   ├── ARCHITECTURE.md  # Component diagram + design decisions
-│   └── API.md           # Complete API reference
-└── IMPLEMENTATION.md    # 15-phase development log (630 lines)
+src/
+├── engine/
+│   ├── order.cpp/hpp           — Order model: IOC/FOK/iceberg/STP fields
+│   ├── trade.cpp/hpp           — Trade record
+│   ├── price_level.cpp/hpp     — Single price-level FIFO queue
+│   ├── order_pool.cpp/hpp      — Pool allocator; intrusive PooledOrder
+│   ├── price_ladder.cpp/hpp    — Flat vector ladder; best_slot_ tracking
+│   ├── order_book.cpp/hpp      — Bid/ask ladders + order_index_
+│   └── matching_engine.cpp/hpp — IOC/FOK/STP/iceberg matching
+├── data/
+│   ├── event.cpp/hpp           — std::variant<NewOrder,Cancel,Modify,Trade>
+│   ├── ingestor.cpp/hpp        — Event dispatch; taker resting logic
+│   └── validator.cpp/hpp       — Pre-trade validation (6 reject reasons)
+├── marketdata/
+│   └── l2_publisher.cpp/hpp    — L2Snapshot (seq_num, top-5 bid/ask)
+├── logging/
+│   ├── logger.cpp/hpp          — Text event/trade log
+│   ├── replay.cpp/hpp          — Log replay
+│   └── wal_logger.cpp/hpp      — Binary WAL (40-byte packed records)
+└── utils/
+    ├── metrics.cpp/hpp         — Throughput counters
+    ├── latency_histogram.cpp/hpp — rdtsc, TSC calibration, percentiles
+    ├── event_parser.hpp        — CSV order file loader
+    ├── lockfree_queue.hpp      — SPSC ring buffer
+    ├── engine_lockfree.hpp     — Lock-free producer/consumer wrapper
+    └── engine_mt.hpp           — Mutex-based multi-producer wrapper
+
+tests/
+├── unit/                       — 11 executables (~70 tests total)
+│   ├── test_cancel_modify.cpp
+│   ├── test_edgecases.cpp
+│   ├── test_ingest.cpp
+│   ├── test_parser.cpp
+│   ├── test_market_orders.cpp  — 10 IOC/FOK tests
+│   ├── test_stp.cpp            — 9 STP tests
+│   ├── test_iceberg.cpp        — 8 iceberg tests
+│   ├── test_l2.cpp             — 8 L2 snapshot tests
+│   ├── test_wal.cpp            — 9 WAL tests
+│   ├── test_histogram.cpp      — 8 rdtsc histogram tests
+│   └── test_validator.cpp      — 16 validation tests
+├── concurrency/
+│   ├── test_mt.cpp             — Mutex MPSC
+│   └── test_lockfree.cpp       — SPSC vs MPSC vs mutex comparison
+└── replay/
+    └── test_replay.cpp         — Determinism verification
+
+benchmarks/
+├── bench_runner.cpp            — rdtsc-timed scenarios → CSV + table
+├── test_benchmark.cpp          — Simple throughput baseline
+└── bench_parser.cpp            — CSV parser throughput
 ```
 
 ## Quick Start
@@ -335,46 +222,28 @@ cmake -DCMAKE_BUILD_TYPE=Release ..
 cmake --build . -- -j$(nproc)
 ```
 
-### Run Tests (Verify Correctness)
+### Run All Tests
 ```bash
-# Unit tests
-./elob_test_cancel       # Cancel/modify operations
-./elob_test_edgecases    # Boundary conditions (zero quantity, price limits)
-./elob_test_ingest       # Event processing pipeline
-./elob_test_replay       # Deterministic replay verification
+cd build
 
-# Concurrency tests
-./elob_test_mt           # Mutex-based concurrent engine
-./elob_test_concurrency  # Concurrency comparison (single-threaded, mutex, lock-free)
-
-# Parser tests
-./elob_test_parser data/sample_orders.csv  # CSV order loading
+./elob_test_cancel         # Cancel / modify operations
+./elob_test_edgecases      # Boundary conditions
+./elob_test_ingest         # Event processing pipeline
+./elob_test_market_orders  # IOC and FOK order types (10 tests)
+./elob_test_stp            # Self-trade prevention (9 tests)
+./elob_test_iceberg        # Iceberg replenishment (8 tests)
+./elob_test_l2             # L2 market data snapshots (8 tests)
+./elob_test_wal            # Binary WAL correctness (9 tests)
+./elob_test_histogram      # rdtsc histogram percentiles (8 tests)
+./elob_test_validator      # Pre-trade validation (16 tests)
+./elob_test_concurrency    # Concurrency models comparison
 ```
 
-### Run Benchmarks
+### Benchmarks
 ```bash
-# Simple throughput test
-./elob_benchmark
-
-# Comprehensive scenarios → bench_results.csv
-./elob_bench_runner
-
-# CSV parsing benchmark
-./elob_bench_parser
-```
-
-### Analyze Results (Requires Python 3.8+)
-```bash
-cd ..
-python3 -m venv venv
-source venv/bin/activate
-pip install -r scripts/requirements.txt
-
-# Text analysis
-python3 scripts/analyze_benchmark.py build/bench_results.csv
-
-# Visualization (generates PNG plots)
-python3 scripts/plot_benchmark.py build/bench_results.csv -o benchmarks/plots/
+./elob_bench_runner   # rdtsc per-event timing → bench_results.csv
+./elob_benchmark      # Simple throughput baseline
+./elob_bench_parser data/sample_orders.csv
 ```
 
 ## Usage Example
@@ -383,90 +252,81 @@ python3 scripts/plot_benchmark.py build/bench_results.csv -o benchmarks/plots/
 #include "engine/order_book.hpp"
 #include "engine/matching_engine.hpp"
 #include "data/ingestor.hpp"
+#include "data/validator.hpp"
+#include "marketdata/l2_publisher.hpp"
+#include "logging/wal_logger.hpp"
 
 using namespace elob;
 
-// Initialize engine
-OrderBook book;
+// Price ladder: base=1, tick=1, max_price=10000
+OrderBook      book(1, 1, 10000);
 MatchingEngine engine(book);
-EventIngestor ingestor(book, engine);
+Validator      validator(book, 1, 10000);
+EventIngestor  ingestor(book, engine, &validator);  // null = no validation
 
-// Submit buy order: Order(id, side, price, quantity, timestamp)
-Order buy_order(1, Side::Buy, 10000, 100, 1);
-Event buy_event(1, 1, EventPayload(NewOrder{buy_order}));
-auto trades1 = ingestor.process(buy_event);  // No match (rests in book)
+WalLogger      wal("orders.wal");
+L2Publisher    l2pub(book);
 
-// Submit matching sell order (crosses spread)
-Order sell_order(2, Side::Sell, 10000, 50, 2);
-Event sell_event(2, 2, EventPayload(NewOrder{sell_order}));
-auto trades2 = ingestor.process(sell_event);  // Produces 1 trade
+// Limit buy: id=1, side=Buy, price=99, qty=100, ts=1
+Order buy(1, Side::Buy, 99, 100, 1);
+Event e1(1, 1, NewOrder{buy});
+auto trades = ingestor.process(e1);  // rests (no match)
+wal.push(e1);
 
-// trades2[0]: Trade(trade_id=1, maker=1, taker=2, price=10000, qty=50, ts=2)
+// IOC sell: crosses at 99, discards residual
+Order ioc_sell(2, Side::Sell, 99, 200, 2, OrderType::IOC);
+Event e2(2, 2, NewOrder{ioc_sell});
+trades = ingestor.process(e2);       // Trade(price=99, qty=100)
 
-// Cancel remaining buy order
-Event cancel_event(3, 3, EventPayload(Cancel{1}));
-ingestor.process(cancel_event);
+// Iceberg buy: 10 displayed, 90 in reserve
+Order ice(3, Side::Buy, 98, 100, 3);
+ice.set_iceberg(10);
+Event e3(3, 3, NewOrder{ice});
+ingestor.process(e3);
 
-// Modify order (change price)
-Event modify_event(4, 4, EventPayload(Modify{1, 150, 9950}));
-ingestor.process(modify_event);
+// L2 snapshot after each event
+L2Snapshot snap = l2pub.build(3);
+// snap.seq_num == 1, snap.bids[0] = {price=98, qty=10}
+
+// Cancel
+Event e4(4, 4, Cancel{1});
+ingestor.process(e4);
+wal.push(e4);
+wal.flush();
 ```
+
+## Why This Demonstrates Quant/HFT Readiness
+
+### Market Microstructure
+- Exchange-accurate price-time priority (FIFO within level)
+- All standard order types: Limit, IOC, FOK, Iceberg
+- STP as mandated by exchange rules (CME, CBOE)
+- L2 market data with gap-detectable sequence numbers
+
+### Low-Latency Engineering
+- **O(1) everything on the hot path**: insert, cancel, modify, best bid/ask
+- Zero heap allocation during matching (pool allocator)
+- Cache-line aware: `OrderPool` entries packed; SPSC atomics `alignas(64)`
+- `rdtsc` directly (not `std::chrono`) for sub-nanosecond measurement resolution
+- TSC calibrated once at startup; no per-event syscalls
+
+### Risk & Compliance Infrastructure
+- Pre-trade validator (SEC Rule 15c3-5 pattern): duplicate IDs, price bands, monotonic timestamps
+- Binary WAL with sequence numbers: crash-recoverable, replayable audit trail
+- Deterministic replay: same event log → identical trade sequence (100% reproducible)
+
+### Engineering Craft
+- Zero external dependencies (C++20 stdlib only)
+- `std::visit` on `std::variant` — type-safe event dispatch, no virtual dispatch overhead
+- Integer prices throughout — no floating-point non-determinism
+- 70+ unit tests across 11 executables; every new subsystem ships with a test file
 
 ## Technical Requirements
 
-- **Compiler**: C++20 (GCC 10+, Clang 12+, MSVC 19.29+)
+- **Compiler**: C++20 (GCC 10+, Clang 12+)
 - **Build system**: CMake 3.15+
-- **Threading**: pthread (for concurrency tests)
-- **Python** (optional): 3.8+ with matplotlib, pandas, numpy (for visualization)
-
-## Documentation
-
-- [**ARCHITECTURE.md**](docs/ARCHITECTURE.md): Component diagram, design rationale, determinism guarantees
-- [**API.md**](docs/API.md): Complete API reference with code examples
-- [**IMPLEMENTATION.md**](IMPLEMENTATION.md): 15-phase development log with design decisions and trade-offs
-
-## Why This Demonstrates Quant Finance Readiness
-
-### 1. Market Microstructure Understanding
-- Implements exchange-accurate price-time priority (FIFO matching)
-- Handles partial fills, queue position, and aggressive vs passive orders
-- Demonstrates knowledge of order book dynamics (spread, depth, liquidity)
-
-### 2. Low-Latency Engineering
-- O(1) cancel/modify operations (critical for market-making)
-- Lock-free concurrency (alternative to mutex with ring-buffer atomics)
-- Cache-aware data structures (64-byte alignment, false sharing prevention)
-- Zero-copy event processing with `std::variant`
-
-### 3. Correctness & Risk Management
-- 100% deterministic replay (regulatory compliance, debugging)
-- Comprehensive test coverage (edge cases, boundary conditions)
-- Integer arithmetic (no floating-point rounding errors)
-- Event-driven architecture with audit trail
-
-### 4. Performance Analysis
-- Quantitative benchmarking with statistical rigor
-- Scenario-based testing (different order flow characteristics)
-- Scalability analysis (1K → 50K events, concurrency models)
-- Deterministic baseline for comparison (single-threaded)
-
-### 5. Production Engineering
-- Zero external dependencies (production-portable)
-- Clean separation of concerns (data/engine/utils layers)
-- Extensive documentation (630-line implementation log)
-- CSV parser for realistic order replay (backtesting workflows)
-
-## Potential Extensions (Interview Talking Points)
-
-- **Market data**: Add BBO (best bid/offer) snapshots, L2/L3 market data feeds
-- **Order types**: IOC (Immediate-or-Cancel), FOK (Fill-or-Kill), stop orders, iceberg orders
-- **FIX protocol**: Add FIX 4.4/5.0 message adapter for exchange connectivity
-- **Binary logging**: Replace text logs with zero-copy binary format (lower latency)
-- **Advanced concurrency**: MPMC queues, work-stealing thread pool, SIMD optimizations
-- **Risk checks**: Pre-trade risk (position limits, margin), post-trade P&L attribution
-- **Matching algorithms**: Pro-rata matching (futures), size-time priority (some dark pools)
-- **Smart order routing**: Multi-venue aggregation, slippage minimization
+- **Threading**: pthread (concurrency tests)
 
 ## Author
 
-Devansh Khandelwal ;)
+Devansh Khandelwal
