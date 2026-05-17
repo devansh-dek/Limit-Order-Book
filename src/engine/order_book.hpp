@@ -43,6 +43,10 @@ public:
     uint64_t qty_at(Side side, Price price) const;
     bool     has_level(Side side, Price price) const;
 
+    // Total qty available to fill a taker at-or-better than price_limit.
+    // Used by the matching engine for FOK pre-check without touching the book.
+    uint64_t available_to_fill(Side side, Price price_limit) const;
+
 private:
     PriceLadder bids_;   // is_bid = true
     PriceLadder asks_;   // is_bid = false

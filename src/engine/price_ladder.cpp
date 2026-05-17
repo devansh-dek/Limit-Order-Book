@@ -50,4 +50,23 @@ void PriceLadder::on_erase(int32_t slot_idx, bool became_empty) {
     }
 }
 
+uint64_t PriceLadder::fillable_qty(int64_t price_limit) const {
+    if (best_slot_ == -1) return 0;
+    uint64_t total = 0;
+    int32_t  limit_idx = index_of(price_limit);
+    int32_t  n = static_cast<int32_t>(slots_.size());
+    if (is_bid_) {
+        // Bids: best is highest; "at-or-better" means price >= price_limit.
+        int32_t lo = (limit_idx >= 0) ? limit_idx : 0;
+        for (int32_t i = best_slot_; i >= lo; --i)
+            total += slots_[static_cast<size_t>(i)].total_qty;
+    } else {
+        // Asks: best is lowest; "at-or-better" means price <= price_limit.
+        int32_t hi = (limit_idx < n) ? limit_idx : n - 1;
+        for (int32_t i = best_slot_; i <= hi; ++i)
+            total += slots_[static_cast<size_t>(i)].total_qty;
+    }
+    return total;
+}
+
 } // namespace elob

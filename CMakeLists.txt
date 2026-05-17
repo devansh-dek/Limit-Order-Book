@@ -24,12 +24,13 @@ add_executable(elob src/main.cpp)
 target_compile_options(elob PRIVATE -Wall -Wextra -Wpedantic)
 
 # Unit tests
-add_executable(elob_test_cancel    tests/unit/test_cancel_modify.cpp ${ELOB_CORE})
-add_executable(elob_test_edgecases tests/unit/test_edgecases.cpp     ${ELOB_CORE})
-add_executable(elob_test_ingest    tests/unit/test_ingest.cpp        ${ELOB_CORE})
-add_executable(elob_test_parser    tests/unit/test_parser.cpp        ${ELOB_CORE})
+add_executable(elob_test_cancel       tests/unit/test_cancel_modify.cpp  ${ELOB_CORE})
+add_executable(elob_test_edgecases    tests/unit/test_edgecases.cpp      ${ELOB_CORE})
+add_executable(elob_test_ingest       tests/unit/test_ingest.cpp         ${ELOB_CORE})
+add_executable(elob_test_parser       tests/unit/test_parser.cpp         ${ELOB_CORE})
+add_executable(elob_test_market_orders tests/unit/test_market_orders.cpp ${ELOB_CORE})
 
-foreach(t elob_test_cancel elob_test_edgecases elob_test_ingest elob_test_parser)
+foreach(t elob_test_cancel elob_test_edgecases elob_test_ingest elob_test_parser elob_test_market_orders)
     target_compile_options(${t} PRIVATE -Wall -Wextra -Wpedantic)
 endforeach()
 

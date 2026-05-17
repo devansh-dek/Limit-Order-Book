@@ -144,4 +144,11 @@ bool OrderBook::has_level(Side side, Price price) const {
     return slot && slot->count > 0;
 }
 
+uint64_t OrderBook::available_to_fill(Side side, Price price_limit) const {
+    // Buy taker crosses asks (price_limit = max willing to pay).
+    // Sell taker crosses bids (price_limit = min willing to accept).
+    if (side == Side::Buy) return asks_.fillable_qty(price_limit);
+    else                   return bids_.fillable_qty(price_limit);
+}
+
 } // namespace elob

@@ -26,6 +26,11 @@ public:
     // Best active slot; nullptr if the ladder is empty.
     LadderSlot* best();
 
+    // Sum of total_qty across all slots at prices at-or-better than price_limit.
+    // For asks (is_bid=false): slots with price <= price_limit.
+    // For bids (is_bid=true):  slots with price >= price_limit.
+    uint64_t fillable_qty(int64_t price_limit) const;
+
     // Must be called after inserting an order into a slot.
     // became_active=true when the slot's count just went from 0 to 1.
     void on_insert(int32_t slot_idx, bool became_active);

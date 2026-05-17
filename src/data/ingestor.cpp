@@ -12,9 +12,9 @@ std::vector<Trade> EventIngestor::process(Event &ev) {
         if constexpr (std::is_same_v<T, NewOrder>) {
             Order taker = payload.order; // copy; MatchingEngine mutates taker
             engine_.process(taker, ev.timestamp, trades);
-            // If taker has remaining, rest it on the book
-            if (!taker.is_filled()) {
-                // Use the taker's remaining as new quantity; preserve original order id
+            // Only Limit orders rest on the book. IOC discards any residual.
+            // FOK either filled completely or engine returned with no trades.
+            if (!taker.is_filled() && taker.type == OrderType::Limit) {
                 Order residual(taker.order_id, taker.side, taker.price, taker.remaining, ev.timestamp);
                 book_.insert(residual);
             }
