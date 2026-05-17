@@ -12,11 +12,12 @@ std::vector<Trade> EventIngestor::process(Event &ev) {
         if constexpr (std::is_same_v<T, NewOrder>) {
             Order taker = payload.order; // copy; MatchingEngine mutates taker
             engine_.process(taker, ev.timestamp, trades);
-            // Only Limit orders rest on the book. IOC discards any residual.
-            // FOK either filled completely or engine returned with no trades.
-            if (!taker.is_filled() && taker.type == OrderType::Limit) {
-                Order residual(taker.order_id, taker.side, taker.price, taker.remaining, ev.timestamp);
-                book_.insert(residual);
+            // Only Limit orders rest on the book. IOC/FOK residuals are discarded.
+            // STP CancelNewest/Both sets stp_cancelled; those never rest either.
+            // Insert taker directly: preserves participant_id, stp_mode, and type.
+            // (taker.remaining already reflects any partial fills from the engine.)
+            if (!taker.is_filled() && !taker.stp_cancelled && taker.type == OrderType::Limit) {
+                book_.insert(taker);
             }
         } else if constexpr (std::is_same_v<T, Cancel>) {
             book_.cancel(payload.order_id);

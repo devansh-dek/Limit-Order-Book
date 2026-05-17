@@ -9,6 +9,12 @@ namespace elob {
 enum class Side      : uint8_t { Buy = 0, Sell = 1 };
 enum class OrderType : uint8_t { Limit = 0, IOC = 1, FOK = 2 };
 
+// Self-trade prevention mode applied to the incoming (taker) order.
+// CancelNewest : cancel the taker; resting maker is untouched.
+// CancelOldest : cancel the resting maker; taker continues matching.
+// CancelBoth   : cancel both; no fill, taker not rested on book.
+enum class STPMode   : uint8_t { None = 0, CancelNewest = 1, CancelOldest = 2, CancelBoth = 3 };
+
 struct Order {
     uint64_t  order_id;                        // unique identifier
     Side      side;                            // buy or sell
@@ -16,14 +22,19 @@ struct Order {
     uint64_t  quantity;                        // original quantity
     uint64_t  remaining;                       // remaining quantity to be filled
     uint64_t  timestamp;                       // monotonic logical timestamp for time-priority
-    OrderType type = OrderType::Limit;         // execution instruction
+    uint64_t  participant_id  = 0;             // firm / trader identifier for STP
+    OrderType type            = OrderType::Limit;
+    STPMode   stp_mode        = STPMode::None;
+    bool      stp_cancelled   = false;         // set by engine when STP fires on taker
 
     Order() = default;
 
     Order(uint64_t id, Side s, int64_t p, uint64_t qty, uint64_t ts,
-          OrderType t = OrderType::Limit) noexcept
+          OrderType t   = OrderType::Limit,
+          uint64_t  pid = 0,
+          STPMode   stp = STPMode::None) noexcept
         : order_id(id), side(s), price(p), quantity(qty), remaining(qty),
-          timestamp(ts), type(t) {}
+          timestamp(ts), participant_id(pid), type(t), stp_mode(stp) {}
 
     // Reduce remaining by n, return filled amount (min)
     uint64_t fill(uint64_t n) noexcept {

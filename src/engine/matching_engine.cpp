@@ -19,6 +19,24 @@ void MatchingEngine::match_buy(Order& taker, uint64_t timestamp, std::vector<Tra
             int32_t      next_idx = po.next;
             Order&       maker    = po.data;
 
+            // Self-trade prevention: taker and maker share a participant_id.
+            if (taker.stp_mode != STPMode::None &&
+                maker.participant_id == taker.participant_id) {
+                if (taker.stp_mode == STPMode::CancelNewest) {
+                    taker.stp_cancelled = true;
+                    return;  // taker cancelled; resting book untouched
+                }
+                // CancelOldest or CancelBoth: remove the maker from the book.
+                slot->total_qty -= maker.remaining;
+                book_.erase_from_ask_slot(slot, idx);
+                if (taker.stp_mode == STPMode::CancelBoth) {
+                    taker.stp_cancelled = true;
+                    return;
+                }
+                idx = next_idx;
+                continue;
+            }
+
             uint64_t qty   = min_u64(taker.remaining, maker.remaining);
             slot->total_qty -= qty;   // kept in sync before fill mutates remaining
             maker.fill(qty);
@@ -48,6 +66,22 @@ void MatchingEngine::match_sell(Order& taker, uint64_t timestamp, std::vector<Tr
             PooledOrder& po       = book_.pool().at(idx);
             int32_t      next_idx = po.next;
             Order&       maker    = po.data;
+
+            if (taker.stp_mode != STPMode::None &&
+                maker.participant_id == taker.participant_id) {
+                if (taker.stp_mode == STPMode::CancelNewest) {
+                    taker.stp_cancelled = true;
+                    return;
+                }
+                slot->total_qty -= maker.remaining;
+                book_.erase_from_bid_slot(slot, idx);
+                if (taker.stp_mode == STPMode::CancelBoth) {
+                    taker.stp_cancelled = true;
+                    return;
+                }
+                idx = next_idx;
+                continue;
+            }
 
             uint64_t qty   = min_u64(taker.remaining, maker.remaining);
             slot->total_qty -= qty;
