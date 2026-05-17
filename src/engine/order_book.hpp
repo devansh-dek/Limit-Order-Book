@@ -48,6 +48,7 @@ public:
     // Query helpers used by tests and the L2 publisher (replaces the old find_level API).
     uint64_t qty_at(Side side, Price price) const;
     bool     has_level(Side side, Price price) const;
+    bool     has_order(uint64_t order_id)    const;
 
     // Total qty available to fill a taker at-or-better than price_limit.
     // Used by the matching engine for FOK pre-check without touching the book.

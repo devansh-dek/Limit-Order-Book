@@ -16,6 +16,7 @@ set(ELOB_CORE
     src/engine/price_ladder.cpp
     src/engine/order_book.cpp
     src/engine/matching_engine.cpp
+    src/data/validator.cpp
     src/data/ingestor.cpp
     src/marketdata/l2_publisher.cpp
 )
@@ -35,8 +36,9 @@ add_executable(elob_test_iceberg       tests/unit/test_iceberg.cpp        ${ELOB
 add_executable(elob_test_l2            tests/unit/test_l2.cpp             ${ELOB_CORE})
 add_executable(elob_test_wal           tests/unit/test_wal.cpp            ${ELOB_CORE} src/logging/wal_logger.cpp)
 add_executable(elob_test_histogram     tests/unit/test_histogram.cpp      src/utils/latency_histogram.cpp)
+add_executable(elob_test_validator     tests/unit/test_validator.cpp      ${ELOB_CORE})
 
-foreach(t elob_test_cancel elob_test_edgecases elob_test_ingest elob_test_parser elob_test_market_orders elob_test_stp elob_test_iceberg elob_test_l2 elob_test_wal elob_test_histogram)
+foreach(t elob_test_cancel elob_test_edgecases elob_test_ingest elob_test_parser elob_test_market_orders elob_test_stp elob_test_iceberg elob_test_l2 elob_test_wal elob_test_histogram elob_test_validator)
     target_compile_options(${t} PRIVATE -Wall -Wextra -Wpedantic)
 endforeach()
 

@@ -1,11 +1,19 @@
 #include "data/ingestor.hpp"
+#include "data/validator.hpp"
 
 #include <variant>
 
 namespace elob {
 
-std::vector<Trade> EventIngestor::process(Event &ev) {
+std::vector<Trade> EventIngestor::process(Event& ev) {
     std::vector<Trade> trades;
+
+    if (validator_) {
+        last_reject_ = validator_->validate(ev);
+        if (last_reject_ != RejectReason::None) return trades;
+    } else {
+        last_reject_ = RejectReason::None;
+    }
     // Use std::visit to handle different payloads
     std::visit([&](auto &payload){
         using T = std::decay_t<decltype(payload)>;

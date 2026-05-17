@@ -2,6 +2,7 @@
 #pragma once
 
 #include "data/event.hpp"
+#include "data/validator.hpp"
 #include "engine/order_book.hpp"
 #include "engine/matching_engine.hpp"
 
@@ -12,16 +13,23 @@ namespace elob {
 
 class EventIngestor {
 public:
-    EventIngestor(OrderBook &book, MatchingEngine &engine) noexcept
-        : book_(book), engine_(engine), next_event_id_(1) {}
+    // validator=nullptr disables pre-trade validation (existing behaviour).
+    EventIngestor(OrderBook& book, MatchingEngine& engine,
+                  Validator* validator = nullptr) noexcept
+        : book_(book), engine_(engine), next_event_id_(1), validator_(validator) {}
 
     // Process an event and return any trades emitted as a result.
-    std::vector<Trade> process(Event &ev);
+    // Returns empty if the event is rejected by the validator.
+    std::vector<Trade> process(Event& ev);
+
+    RejectReason last_reject() const noexcept { return last_reject_; }
 
 private:
-    OrderBook &book_;
-    MatchingEngine &engine_;
-    uint64_t next_event_id_;
+    OrderBook&     book_;
+    MatchingEngine& engine_;
+    uint64_t       next_event_id_;
+    Validator*     validator_;
+    RejectReason   last_reject_ = RejectReason::None;
 };
 
 } // namespace elob

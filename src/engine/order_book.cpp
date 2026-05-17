@@ -138,6 +138,10 @@ uint64_t OrderBook::qty_at(Side side, Price price) const {
     return slot ? slot->total_qty : 0;
 }
 
+bool OrderBook::has_order(uint64_t order_id) const {
+    return order_index_.count(order_id) > 0;
+}
+
 bool OrderBook::has_level(Side side, Price price) const {
     const PriceLadder& ladder = (side == Side::Buy) ? bids_ : asks_;
     const LadderSlot*  slot   = ladder.slot_for(price);
