@@ -33,8 +33,9 @@ add_executable(elob_test_market_orders tests/unit/test_market_orders.cpp  ${ELOB
 add_executable(elob_test_stp           tests/unit/test_stp.cpp            ${ELOB_CORE})
 add_executable(elob_test_iceberg       tests/unit/test_iceberg.cpp        ${ELOB_CORE})
 add_executable(elob_test_l2            tests/unit/test_l2.cpp             ${ELOB_CORE})
+add_executable(elob_test_wal           tests/unit/test_wal.cpp            ${ELOB_CORE} src/logging/wal_logger.cpp)
 
-foreach(t elob_test_cancel elob_test_edgecases elob_test_ingest elob_test_parser elob_test_market_orders elob_test_stp elob_test_iceberg elob_test_l2)
+foreach(t elob_test_cancel elob_test_edgecases elob_test_ingest elob_test_parser elob_test_market_orders elob_test_stp elob_test_iceberg elob_test_l2 elob_test_wal)
     target_compile_options(${t} PRIVATE -Wall -Wextra -Wpedantic)
 endforeach()
 
