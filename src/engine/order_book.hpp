@@ -1,13 +1,11 @@
-// OrderBook: maintain bid and ask price levels (no matching yet)
 #pragma once
 
-#include "engine/price_level.hpp"
 #include "engine/order.hpp"
+#include "engine/order_pool.hpp"
+#include "engine/price_ladder.hpp"
 
-#include <map>
-#include <memory>
-#include <cstdint>
 #include <unordered_map>
+#include <cstdint>
 
 namespace elob {
 
@@ -15,96 +13,46 @@ class OrderBook {
 public:
     using Price = int64_t;
 
-    OrderBook() = default;
+    // base_price: minimum valid price (inclusive).
+    // num_ticks : number of distinct price levels supported.
+    // Defaults cover prices 1–19 999 with tick size 1.
+    explicit OrderBook(int64_t base_price = 0,
+                       int64_t tick_size  = 1,
+                       int32_t num_ticks  = 20000);
 
-    // Insert order into book; returns iterator/handles could be added later.
-    void insert(const Order& o) {
-        if (o.side == Side::Buy) {
-            auto it = bids_.find(o.price);
-            PriceLevel *pl = nullptr;
-            if (it == bids_.end()) {
-                auto up = std::make_unique<PriceLevel>(o.price);
-                pl = up.get();
-                auto res = bids_.emplace(o.price, std::move(up));
-                it = res.first;
-            } else {
-                pl = it->second.get();
-            }
-            auto oit = pl->add_order(o);
-            order_index_.emplace(o.order_id, Locator{o.side, o.price, pl, oit, o.timestamp});
-        } else {
-            auto it = asks_.find(o.price);
-            PriceLevel *pl = nullptr;
-            if (it == asks_.end()) {
-                auto up = std::make_unique<PriceLevel>(o.price);
-                pl = up.get();
-                auto res = asks_.emplace(o.price, std::move(up));
-                it = res.first;
-            } else {
-                pl = it->second.get();
-            }
-            auto oit = pl->add_order(o);
-            order_index_.emplace(o.order_id, Locator{o.side, o.price, pl, oit, o.timestamp});
-        }
-    }
-
-    // Find price level for side/price
-    PriceLevel* find_level(Side side, Price price) {
-        if (side == Side::Buy) {
-            auto it = bids_.find(price);
-            return (it == bids_.end()) ? nullptr : it->second.get();
-        } else {
-            auto it = asks_.find(price);
-            return (it == asks_.end()) ? nullptr : it->second.get();
-        }
-    }
-
-    // Best price accessors (nullptr if none)
-    PriceLevel* best_bid() {
-        if (bids_.empty()) return nullptr;
-        return bids_.begin()->second.get();
-    }
-
-    PriceLevel* best_ask() {
-        if (asks_.empty()) return nullptr;
-        return asks_.begin()->second.get();
-    }
-
-    // Remove a price level if it's empty
-    void remove_level_if_empty(Side side, Price price) {
-        if (side == Side::Buy) {
-            auto it = bids_.find(price);
-            if (it != bids_.end() && it->second->empty()) bids_.erase(it);
-        } else {
-            auto it = asks_.find(price);
-            if (it != asks_.end() && it->second->empty()) asks_.erase(it);
-        }
-    }
-
-    // Cancel an order by id. Returns true if removed.
+    void insert(const Order& o);
     bool cancel(uint64_t order_id);
-
-    // Modify an order: change price and/or quantity and optionally timestamp.
-    // Returns true on success.
     bool modify(uint64_t order_id, Price new_price, uint64_t new_quantity, uint64_t new_timestamp);
 
+    // Best level access for the matching engine.
+    LadderSlot* best_bid();
+    LadderSlot* best_ask();
+
+    int64_t bid_price(const LadderSlot* slot) const { return bids_.price_of_slot(slot); }
+    int64_t ask_price(const LadderSlot* slot) const { return asks_.price_of_slot(slot); }
+
+    // Pool access: matching engine walks the intrusive linked list via pool indices.
+    OrderPool& pool() { return pool_; }
+
+    // Called by the matching engine after slot->total_qty has already been decremented
+    // and the order has been filled. Only patches intrusive links + count + best_slot.
+    void erase_from_bid_slot(LadderSlot* slot, int32_t pool_idx);
+    void erase_from_ask_slot(LadderSlot* slot, int32_t pool_idx);
+
+    // Query helpers used by tests and the L2 publisher (replaces the old find_level API).
+    uint64_t qty_at(Side side, Price price) const;
+    bool     has_level(Side side, Price price) const;
+
 private:
-    // Bids: map keyed by price descending (highest bid first)
-    std::map<Price, std::unique_ptr<PriceLevel>, std::greater<Price>> bids_;
-    // Asks: map keyed by price ascending (lowest ask first)
-    std::map<Price, std::unique_ptr<PriceLevel>, std::less<Price>> asks_;
+    PriceLadder bids_;   // is_bid = true
+    PriceLadder asks_;   // is_bid = false
+    OrderPool   pool_;
 
-    using OrderIterator = PriceLevel::OrderIterator;
+    std::unordered_map<uint64_t, int32_t> order_index_;  // order_id -> pool index
 
-    struct Locator {
-        Side side;
-        Price price;
-        PriceLevel* level;
-        OrderIterator it;
-        uint64_t timestamp;
-    };
-
-    std::unordered_map<uint64_t, Locator> order_index_;
+    void append_to_slot(PriceLadder& ladder, LadderSlot* slot, int32_t idx);
+    // Detaches from linked list and adjusts total_qty; does NOT free the pool slot.
+    void detach_from_slot(PriceLadder& ladder, LadderSlot* slot, int32_t idx);
 };
 
 } // namespace elob

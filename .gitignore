@@ -6,3 +6,6 @@ build/
 IMPLEMENTATION.md
 README.md
 answers.md
+response.md
+.specstory/
+docs/concurrency.md

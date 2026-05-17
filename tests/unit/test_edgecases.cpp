@@ -10,7 +10,6 @@ using namespace elob;
 
 static void test_partial_fills_across_levels() {
     OrderBook book;
-    // resting asks: id1 price100 qty3, id2 price101 qty4
     Order a1(1, Side::Sell, 100, 3, 1);
     Order a2(2, Side::Sell, 101, 4, 2);
     book.insert(a1);
@@ -24,13 +23,10 @@ static void test_partial_fills_across_levels() {
     engine.process(taker, 10, trades);
 
     uint64_t total = 0;
-    for (auto &t : trades) total += t.quantity;
+    for (auto& t : trades) total += t.quantity;
     assert(total == 5);
-    // verify quantities at price levels
-    auto pl100 = book.find_level(Side::Sell, 100);
-    assert(pl100 == nullptr || pl100->total_quantity() == 0);
-    auto pl101 = book.find_level(Side::Sell, 101);
-    assert(pl101 != nullptr && pl101->total_quantity() == 2);
+    assert(book.qty_at(Side::Sell, 100) == 0);
+    assert(book.qty_at(Side::Sell, 101) == 2);
 
     std::cout << "partial_fills_across_levels passed\n";
 }
@@ -40,23 +36,17 @@ static void test_modify_preserve_filled() {
     MatchingEngine engine(book);
     std::vector<Trade> trades;
 
-    // resting sell order id1 qty=10
     Order maker(1, Side::Sell, 100, 10, 1);
     book.insert(maker);
 
-    // taker buys 4
     Order taker(2, Side::Buy, 100, 4, 5);
     engine.process(taker, 5, trades);
+    assert(book.qty_at(Side::Sell, 100) == 6);
 
-    // maker should have remaining 6
-    auto pl = book.find_level(Side::Sell, 100);
-    assert(pl != nullptr && pl->total_quantity() == 6);
-
-    // modify maker to new total quantity 8 (should preserve 4 filled => remaining = 8-4=4)
+    // modify to new total qty=8; filled=4, so remaining should be 4
     bool ok = book.modify(1, 100, 8, 10);
     assert(ok);
-    pl = book.find_level(Side::Sell, 100);
-    assert(pl != nullptr && pl->total_quantity() == 4);
+    assert(book.qty_at(Side::Sell, 100) == 4);
 
     std::cout << "modify_preserve_filled passed\n";
 }

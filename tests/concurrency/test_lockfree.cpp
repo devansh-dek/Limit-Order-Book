@@ -7,7 +7,6 @@
 
 #include <iostream>
 #include <vector>
-#include <chrono>
 #include <iomanip>
 
 using namespace elob;
@@ -137,78 +136,78 @@ double benchmark_singlethread(const std::vector<Event>& events) {
 }
 
 void run_comparison(size_t N) {
-    std::cout << "Generating " << N << " events..." << std::endl;
+    std::cout << "Generating " << N << " events..." << endl;
     auto events = generate_events(N);
 
-    std::cout << "\n=== Benchmarking (N=" << N << ") ===" << std::endl;
+    std::cout << "\n=== Benchmarking (N=" << N << ") ===" << endl;
 
     // Single-threaded baseline
     std::cout << "Running single-threaded baseline..." << std::flush;
     double st_time = benchmark_singlethread(events);
     double st_throughput = N / st_time;
-    std::cout << " done" << std::endl;
+    std::cout << " done" << endl;
 
     // Mutex-based concurrent
     std::cout << "Running mutex-based concurrent..." << std::flush;
     double mutex_time = benchmark_mutex(events);
     double mutex_throughput = N / mutex_time;
-    std::cout << " done" << std::endl;
+    std::cout << " done" << endl;
 
     // Lock-free concurrent
     std::cout << "Running lock-free concurrent..." << std::flush;
     double lf_time = benchmark_lockfree(events);
     double lf_throughput = N / lf_time;
-    std::cout << " done" << std::endl;
+    std::cout << " done" << endl;
 
     // MPSC concurrent
     std::cout << "Running MPSC concurrent..." << std::flush;
     double mpsc_time = benchmark_mpsc(events);
     double mpsc_throughput = N / mpsc_time;
-    std::cout << " done" << std::endl;
+    std::cout << " done" << endl;
 
     // Results
-    std::cout << "\n--- Results ---" << std::endl;
+    std::cout << "\n--- Results ---" << endl;
     std::cout << std::fixed << std::setprecision(6);
 
-    std::cout << "\nSingle-threaded:" << std::endl;
-    std::cout << "  Time:       " << st_time << " s" << std::endl;
-    std::cout << "  Throughput: " << std::setprecision(0) << st_throughput << " ops/s" << std::endl;
+    std::cout << "\nSingle-threaded:" << endl;
+    std::cout << "  Time:       " << st_time << " s" << endl;
+    std::cout << "  Throughput: " << std::setprecision(0) << st_throughput << " ops/s" << endl;
 
-    std::cout << "\nMutex-based:" << std::endl;
-    std::cout << "  Time:       " << std::setprecision(6) << mutex_time << " s" << std::endl;
-    std::cout << "  Throughput: " << std::setprecision(0) << mutex_throughput << " ops/s" << std::endl;
-    std::cout << "  Speedup:    " << std::setprecision(2) << (st_time / mutex_time) << "x" << std::endl;
+    std::cout << "\nMutex-based:" << endl;
+    std::cout << "  Time:       " << std::setprecision(6) << mutex_time << " s" << endl;
+    std::cout << "  Throughput: " << std::setprecision(0) << mutex_throughput << " ops/s" << endl;
+    std::cout << "  Speedup:    " << std::setprecision(2) << (st_time / mutex_time) << "x" << endl;
 
-    std::cout << "\nLock-free:" << std::endl;
-    std::cout << "  Time:       " << std::setprecision(6) << lf_time << " s" << std::endl;
-    std::cout << "  Throughput: " << std::setprecision(0) << lf_throughput << " ops/s" << std::endl;
-    std::cout << "  Speedup:    " << std::setprecision(2) << (st_time / lf_time) << "x" << std::endl;
+    std::cout << "\nLock-free:" << endl;
+    std::cout << "  Time:       " << std::setprecision(6) << lf_time << " s" << endl;
+    std::cout << "  Throughput: " << std::setprecision(0) << lf_throughput << " ops/s" << endl;
+    std::cout << "  Speedup:    " << std::setprecision(2) << (st_time / lf_time) << "x" << endl;
 
-    std::cout << "\nMPSC:" << std::endl;
-    std::cout << "  Time:       " << std::setprecision(6) << mpsc_time << " s" << std::endl;
-    std::cout << "  Throughput: " << std::setprecision(0) << mpsc_throughput << " ops/s" << std::endl;
-    std::cout << "  Speedup:    " << std::setprecision(2) << (st_time / mpsc_time) << "x" << std::endl;
+    std::cout << "\nMPSC:" << endl;
+    std::cout << "  Time:       " << std::setprecision(6) << mpsc_time << " s" << endl;
+    std::cout << "  Throughput: " << std::setprecision(0) << mpsc_throughput << " ops/s" << endl;
+    std::cout << "  Speedup:    " << std::setprecision(2) << (st_time / mpsc_time) << "x" << endl;
 
-    std::cout << "\nLock-free vs Mutex:" << std::endl;
-    std::cout << "  Improvement: " << std::setprecision(2) << (mutex_time / lf_time) << "x" << std::endl;
+    std::cout << "\nLock-free vs Mutex:" << endl;
+    std::cout << "  Improvement: " << std::setprecision(2) << (mutex_time / lf_time) << "x" << endl;
 
-    std::cout << "\nMPSC vs Mutex:" << std::endl;
-    std::cout << "  Improvement: " << std::setprecision(2) << (mutex_time / mpsc_time) << "x" << std::endl;
+    std::cout << "\nMPSC vs Mutex:" << endl;
+    std::cout << "  Improvement: " << std::setprecision(2) << (mutex_time / mpsc_time) << "x" << endl;
 
-    std::cout << std::endl;
+    std::cout << endl;
 }
 
 int main() {
-    std::cout << "Lock-Free vs Mutex-Based Engine Comparison" << std::endl;
-    std::cout << "===========================================" << std::endl;
+    std::cout << "Lock-Free vs Mutex-Based Engine Comparison" << endl;
+    std::cout << "===========================================" << endl;
 
     // Run multiple sizes
-    std::vector<size_t> sizes = {1000, 10000, 50000, 100000};
+    std::vector<size_t> sizes = {1000, 10000, 500000, 1000000000};
 
     for (size_t N : sizes) {
         run_comparison(N);
     }
 
-    std::cout << "Benchmark complete!" << std::endl;
+    std::cout << "Benchmark complete!" << endl;
     return 0;
 }

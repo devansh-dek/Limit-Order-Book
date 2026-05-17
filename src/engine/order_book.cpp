@@ -1,88 +1,147 @@
 #include "engine/order_book.hpp"
 
 namespace elob {
-// OrderBook implementation: cancel and modify logic using the order_index_
+
+OrderBook::OrderBook(int64_t base_price, int64_t tick_size, int32_t num_ticks)
+    : bids_(base_price, tick_size, num_ticks, /*is_bid=*/true)
+    , asks_(base_price, tick_size, num_ticks, /*is_bid=*/false)
+{}
+
+// ── private helpers ──────────────────────────────────────────────────────────
+
+void OrderBook::append_to_slot(PriceLadder& ladder, LadderSlot* slot, int32_t idx) {
+    PooledOrder& po = pool_.at(idx);
+    po.prev = slot->tail;
+    po.next = -1;
+    if (slot->tail != -1) pool_.at(slot->tail).next = idx;
+    else                  slot->head = idx;
+    slot->tail = idx;
+    slot->count++;
+    bool became_active = (slot->count == 1);
+    slot->total_qty += po.data.remaining;
+    ladder.on_insert(ladder.index_of_slot(slot), became_active);
+}
+
+void OrderBook::detach_from_slot(PriceLadder& ladder, LadderSlot* slot, int32_t idx) {
+    PooledOrder& po = pool_.at(idx);
+    if (po.prev != -1) pool_.at(po.prev).next = po.next;
+    else               slot->head = po.next;
+    if (po.next != -1) pool_.at(po.next).prev = po.prev;
+    else               slot->tail = po.prev;
+    slot->total_qty -= po.data.remaining;
+    slot->count--;
+    ladder.on_erase(ladder.index_of_slot(slot), slot->count == 0);
+}
+
+// ── public interface ─────────────────────────────────────────────────────────
+
+void OrderBook::insert(const Order& o) {
+    PriceLadder& ladder = (o.side == Side::Buy) ? bids_ : asks_;
+    LadderSlot*  slot   = ladder.slot_for(o.price);
+    if (!slot) return;  // price out of range; validator will catch this in Step 8
+    int32_t idx = pool_.alloc(o);
+    append_to_slot(ladder, slot, idx);
+    order_index_.emplace(o.order_id, idx);
+}
 
 bool OrderBook::cancel(uint64_t order_id) {
-	auto it = order_index_.find(order_id);
-	if (it == order_index_.end()) return false;
-
-	Locator loc = it->second;
-	// erase order from its price level
-	loc.level->erase_order(loc.it);
-	// remove price level if empty
-	remove_level_if_empty(loc.side, loc.price);
-	// erase index entry
-	order_index_.erase(it);
-	return true;
+    auto it = order_index_.find(order_id);
+    if (it == order_index_.end()) return false;
+    int32_t      idx    = it->second;
+    PooledOrder& po     = pool_.at(idx);
+    PriceLadder& ladder = (po.data.side == Side::Buy) ? bids_ : asks_;
+    LadderSlot*  slot   = ladder.slot_for(po.data.price);
+    detach_from_slot(ladder, slot, idx);
+    pool_.free(idx);
+    order_index_.erase(it);
+    return true;
 }
 
 bool OrderBook::modify(uint64_t order_id, Price new_price, uint64_t new_quantity, uint64_t new_timestamp) {
-	auto it = order_index_.find(order_id);
-	if (it == order_index_.end()) return false;
+    auto it = order_index_.find(order_id);
+    if (it == order_index_.end()) return false;
 
-	Locator &loc = it->second;
-	OrderIterator old_it = loc.it;
-	Order &ord = *old_it;
+    int32_t      idx    = it->second;
+    PooledOrder& po     = pool_.at(idx);
+    Order&       ord    = po.data;
+    PriceLadder& ladder = (ord.side == Side::Buy) ? bids_ : asks_;
 
-	// Update quantity in place, preserving already-filled amount
-	uint64_t filled = 0;
-	if (ord.quantity >= ord.remaining) filled = ord.quantity - ord.remaining;
-	ord.quantity = new_quantity;
-	ord.remaining = (new_quantity > filled) ? (new_price == ord.price ? (new_quantity - filled) : (new_quantity - filled)) : 0;
-	ord.timestamp = new_timestamp;
+    uint64_t filled        = ord.quantity - ord.remaining;
+    uint64_t new_remaining = (new_quantity > filled) ? (new_quantity - filled) : 0;
 
-	if (ord.price == new_price) {
-		// price unchanged; timestamp updated — repositioning within same level not performed to keep deterministic behavior
-		loc.timestamp = new_timestamp;
-		return true;
-	}
+    if (ord.price == new_price) {
+        // Same price: update quantity in-place, no movement in the queue.
+        LadderSlot* slot  = ladder.slot_for(ord.price);
+        slot->total_qty  -= ord.remaining;
+        slot->total_qty  += new_remaining;
+        ord.quantity      = new_quantity;
+        ord.remaining     = new_remaining;
+        ord.timestamp     = new_timestamp;
+        return true;
+    }
 
-	// Price changed: remove from old level and insert at tail of new level (new time priority)
-	Side side = loc.side;
-	Price old_price = loc.price;
-	PriceLevel *old_level = loc.level;
+    // Price change: detach from old slot, update, reattach at tail of new slot.
+    // The order loses time priority at the new price level — standard exchange behaviour.
+    LadderSlot* old_slot = ladder.slot_for(ord.price);
+    detach_from_slot(ladder, old_slot, idx);
 
-	// erase from old level
-	old_level->erase_order(old_it);
-	remove_level_if_empty(side, old_price);
+    ord.price     = new_price;
+    ord.quantity  = new_quantity;
+    ord.remaining = new_remaining;
+    ord.timestamp = new_timestamp;
+    po.prev = po.next = -1;
 
-	// create or find new level and append order
-	PriceLevel *new_level = nullptr;
-	if (side == Side::Buy) {
-		auto nit = bids_.find(new_price);
-		if (nit == bids_.end()) {
-			auto up = std::make_unique<PriceLevel>(new_price);
-			new_level = up.get();
-			auto res = bids_.emplace(new_price, std::move(up));
-			nit = res.first;
-		} else {
-			new_level = nit->second.get();
-		}
-	} else {
-		auto nit = asks_.find(new_price);
-		if (nit == asks_.end()) {
-			auto up = std::make_unique<PriceLevel>(new_price);
-			new_level = up.get();
-			auto res = asks_.emplace(new_price, std::move(up));
-			nit = res.first;
-		} else {
-			new_level = nit->second.get();
-		}
-	}
-
-	Order new_order = ord; // copy updated order
-	new_order.price = new_price;
-	new_order.timestamp = new_timestamp;
-
-	auto new_it = new_level->add_order(new_order);
-
-	// update locator to point to new location; the stored Order object lives inside the price level list
-	loc.level = new_level;
-	loc.price = new_price;
-	loc.it = new_it;
-	loc.timestamp = new_timestamp;
-
-	return true;
+    LadderSlot* new_slot = ladder.slot_for(new_price);
+    if (!new_slot) {
+        // new price out of range — discard order
+        pool_.free(idx);
+        order_index_.erase(it);
+        return false;
+    }
+    append_to_slot(ladder, new_slot, idx);
+    return true;
 }
+
+// Called by the matching engine only. By this point the matching engine has already
+// decremented slot->total_qty by the fill quantity, so we only patch the intrusive
+// links, count, and best_slot tracking.
+void OrderBook::erase_from_bid_slot(LadderSlot* slot, int32_t pool_idx) {
+    PooledOrder& po = pool_.at(pool_idx);
+    if (po.prev != -1) pool_.at(po.prev).next = po.next;
+    else               slot->head = po.next;
+    if (po.next != -1) pool_.at(po.next).prev = po.prev;
+    else               slot->tail = po.prev;
+    slot->count--;
+    bids_.on_erase(bids_.index_of_slot(slot), slot->count == 0);
+    order_index_.erase(po.data.order_id);
+    pool_.free(pool_idx);
 }
+
+void OrderBook::erase_from_ask_slot(LadderSlot* slot, int32_t pool_idx) {
+    PooledOrder& po = pool_.at(pool_idx);
+    if (po.prev != -1) pool_.at(po.prev).next = po.next;
+    else               slot->head = po.next;
+    if (po.next != -1) pool_.at(po.next).prev = po.prev;
+    else               slot->tail = po.prev;
+    slot->count--;
+    asks_.on_erase(asks_.index_of_slot(slot), slot->count == 0);
+    order_index_.erase(po.data.order_id);
+    pool_.free(pool_idx);
+}
+
+LadderSlot* OrderBook::best_bid() { return bids_.best(); }
+LadderSlot* OrderBook::best_ask() { return asks_.best(); }
+
+uint64_t OrderBook::qty_at(Side side, Price price) const {
+    const PriceLadder& ladder = (side == Side::Buy) ? bids_ : asks_;
+    const LadderSlot*  slot   = ladder.slot_for(price);
+    return slot ? slot->total_qty : 0;
+}
+
+bool OrderBook::has_level(Side side, Price price) const {
+    const PriceLadder& ladder = (side == Side::Buy) ? bids_ : asks_;
+    const LadderSlot*  slot   = ladder.slot_for(price);
+    return slot && slot->count > 0;
+}
+
+} // namespace elob

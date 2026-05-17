@@ -12,11 +12,11 @@ int main() {
     MatchingEngine engine(book);
     EventIngestor ingestor(book, engine);
 
-    // add a resting sell order at price 100 qty 5
+    // resting sell at price 100 qty 5
     Order sell(1, Side::Sell, 100, 5, 1);
     book.insert(sell);
 
-    // create a new buy order (taker) price 100 qty 3
+    // incoming buy taker price 100 qty 3
     Order buy(2, Side::Buy, 100, 3, 10);
     NewOrder no{buy};
     Event ev(1, 10, EventPayload(no));
@@ -27,10 +27,8 @@ int main() {
     assert(trades[0].maker_order_id == 1);
     assert(trades[0].taker_order_id == 2);
 
-    // maker should have remaining 2
-    auto pl = book.find_level(Side::Sell, 100);
-    assert(pl != nullptr);
-    assert(pl->total_quantity() == 2);
+    // maker should have 2 remaining
+    assert(book.qty_at(Side::Sell, 100) == 2);
 
     std::cout << "INGEST TEST PASSED\n";
     return 0;

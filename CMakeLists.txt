@@ -4,144 +4,65 @@ project(EfficientLimitOrderBook VERSION 0.1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Include directories
 include_directories(${CMAKE_SOURCE_DIR}/src)
+
+# Core engine sources shared by every target
+set(ELOB_CORE
+    src/engine/order.cpp
+    src/engine/trade.cpp
+    src/data/event.cpp
+    src/engine/price_level.cpp
+    src/engine/order_pool.cpp
+    src/engine/price_ladder.cpp
+    src/engine/order_book.cpp
+    src/engine/matching_engine.cpp
+    src/data/ingestor.cpp
+)
 
 # Main executable
 add_executable(elob src/main.cpp)
 target_compile_options(elob PRIVATE -Wall -Wextra -Wpedantic)
 
 # Unit tests
-add_executable(elob_test_cancel
-    tests/unit/test_cancel_modify.cpp
-    src/engine/order.cpp
-    src/engine/trade.cpp
-    src/data/event.cpp
-    src/engine/price_level.cpp
-    src/engine/order_book.cpp
-    src/engine/matching_engine.cpp
-    src/data/ingestor.cpp
-)
-target_compile_options(elob_test_cancel PRIVATE -Wall -Wextra -Wpedantic)
+add_executable(elob_test_cancel    tests/unit/test_cancel_modify.cpp ${ELOB_CORE})
+add_executable(elob_test_edgecases tests/unit/test_edgecases.cpp     ${ELOB_CORE})
+add_executable(elob_test_ingest    tests/unit/test_ingest.cpp        ${ELOB_CORE})
+add_executable(elob_test_parser    tests/unit/test_parser.cpp        ${ELOB_CORE})
 
-add_executable(elob_test_edgecases
-    tests/unit/test_edgecases.cpp
-    src/engine/order.cpp
-    src/engine/trade.cpp
-    src/data/event.cpp
-    src/engine/price_level.cpp
-    src/engine/order_book.cpp
-    src/engine/matching_engine.cpp
-    src/data/ingestor.cpp
-)
-target_compile_options(elob_test_edgecases PRIVATE -Wall -Wextra -Wpedantic)
+foreach(t elob_test_cancel elob_test_edgecases elob_test_ingest elob_test_parser)
+    target_compile_options(${t} PRIVATE -Wall -Wextra -Wpedantic)
+endforeach()
 
-add_executable(elob_test_ingest
-    tests/unit/test_ingest.cpp
-    src/engine/order.cpp
-    src/engine/trade.cpp
-    src/data/event.cpp
-    src/engine/price_level.cpp
-    src/engine/order_book.cpp
-    src/engine/matching_engine.cpp
-    src/data/ingestor.cpp
-)
-target_compile_options(elob_test_ingest PRIVATE -Wall -Wextra -Wpedantic)
-
-# Replay tests
+# Replay test
 add_executable(elob_test_replay
     tests/replay/test_replay.cpp
-    src/engine/order.cpp
-    src/engine/trade.cpp
-    src/data/event.cpp
-    src/engine/price_level.cpp
-    src/engine/order_book.cpp
-    src/engine/matching_engine.cpp
-    src/data/ingestor.cpp
+    ${ELOB_CORE}
     src/logging/logger.cpp
 )
 target_compile_options(elob_test_replay PRIVATE -Wall -Wextra -Wpedantic)
 
 # Benchmarks
-add_executable(elob_benchmark
-    benchmarks/test_benchmark.cpp
-    src/engine/order.cpp
-    src/engine/trade.cpp
-    src/data/event.cpp
-    src/engine/price_level.cpp
-    src/engine/order_book.cpp
-    src/engine/matching_engine.cpp
-    src/data/ingestor.cpp
-    src/utils/metrics.cpp
-)
-target_compile_options(elob_benchmark PRIVATE -Wall -Wextra -Wpedantic)
+add_executable(elob_benchmark    benchmarks/test_benchmark.cpp ${ELOB_CORE} src/utils/metrics.cpp)
+add_executable(elob_bench_runner benchmarks/bench_runner.cpp   ${ELOB_CORE} src/utils/metrics.cpp)
+add_executable(elob_bench_parser benchmarks/bench_parser.cpp   ${ELOB_CORE} src/utils/metrics.cpp)
 
-add_executable(elob_bench_runner
-    benchmarks/bench_runner.cpp
-    src/engine/order.cpp
-    src/engine/trade.cpp
-    src/data/event.cpp
-    src/engine/price_level.cpp
-    src/engine/order_book.cpp
-    src/engine/matching_engine.cpp
-    src/data/ingestor.cpp
-    src/utils/metrics.cpp
-)
-target_compile_options(elob_bench_runner PRIVATE -Wall -Wextra -Wpedantic)
+foreach(t elob_benchmark elob_bench_runner elob_bench_parser)
+    target_compile_options(${t} PRIVATE -Wall -Wextra -Wpedantic)
+endforeach()
 
 # Concurrency tests
 add_executable(elob_test_mt
     tests/concurrency/test_mt.cpp
-    src/engine/order.cpp
-    src/engine/trade.cpp
-    src/data/event.cpp
-    src/engine/price_level.cpp
-    src/engine/order_book.cpp
-    src/engine/matching_engine.cpp
-    src/data/ingestor.cpp
+    ${ELOB_CORE}
     src/utils/metrics.cpp
 )
 target_compile_options(elob_test_mt PRIVATE -Wall -Wextra -Wpedantic)
 target_link_libraries(elob_test_mt PRIVATE pthread)
 
-# Concurrency comparison test (single-threaded, mutex, lock-free)
 add_executable(elob_test_concurrency
     tests/concurrency/test_lockfree.cpp
-    src/engine/order.cpp
-    src/engine/trade.cpp
-    src/data/event.cpp
-    src/engine/price_level.cpp
-    src/engine/order_book.cpp
-    src/engine/matching_engine.cpp
-    src/data/ingestor.cpp
+    ${ELOB_CORE}
     src/utils/metrics.cpp
 )
 target_compile_options(elob_test_concurrency PRIVATE -Wall -Wextra -Wpedantic)
 target_link_libraries(elob_test_concurrency PRIVATE pthread)
-
-# Event parser test
-add_executable(elob_test_parser
-    tests/unit/test_parser.cpp
-    src/engine/order.cpp
-    src/engine/trade.cpp
-    src/data/event.cpp
-    src/engine/price_level.cpp
-    src/engine/order_book.cpp
-    src/engine/matching_engine.cpp
-    src/data/ingestor.cpp
-)
-target_compile_options(elob_test_parser PRIVATE -Wall -Wextra -Wpedantic)
-
-# Parser benchmark
-add_executable(elob_bench_parser
-    benchmarks/bench_parser.cpp
-    src/engine/order.cpp
-    src/engine/trade.cpp
-    src/data/event.cpp
-    src/engine/price_level.cpp
-    src/engine/order_book.cpp
-    src/engine/matching_engine.cpp
-    src/data/ingestor.cpp
-    src/utils/metrics.cpp
-)
-target_compile_options(elob_bench_parser PRIVATE -Wall -Wextra -Wpedantic)
