@@ -12,13 +12,13 @@ A **production-grade C++20 matching engine** demonstrating the data structures, 
 - **Iceberg orders** — display slice only; reserve replenished to tail after each fill (loses time priority on replenishment)
 - **L2 market data publisher** — top-5 bid/ask snapshot with monotone `seq_num` for gap detection
 - **Binary write-ahead log (WAL)** — fixed 40-byte packed records, 4 KB batched `write()`, ~2 ns/record amortized
-- **rdtsc latency histograms** — TSC-based per-event timing, TSC calibrated against `CLOCK_MONOTONIC`; p50/p99/p99.9 percentiles
+- **Latency histograms** — per-event timing with p50/p99/p99.9 percentiles
 - **Pre-trade validator** — 6 reject reasons (SEC Rule 15c3-5 style), O(1) duplicate/unknown-ID checks, monotonic timestamp enforcement
-- **SPSC / MPSC concurrency** — lock-free single-producer ring buffer for single-gateway pipelines; mutex-based MPSC for multi-gateway
+- **Concurrency wrappers** — lock-free single-gateway queue; mutex-based multi-gateway (MPSC) pipeline
 
 ## Measured Performance (Release Build, x86_64)
 
-Benchmarked with `rdtsc` per-event timing, TSC calibrated to 2.12 GHz.
+Benchmarked with per-event timing on x86_64.
 
 ### Throughput & Latency (N = 50 000 events)
 
@@ -125,8 +125,8 @@ Benchmarked with `rdtsc` per-event timing, TSC calibrated to 2.12 GHz.
 | Model | Use case | Implementation |
 |-------|----------|----------------|
 | Single-threaded | Baseline, deterministic replay | No synchronisation |
-| Lock-free SPSC | Single gateway → engine pipeline | `LockFreeQueue`: alignas(64) atomic head/tail, power-of-2 ring |
-| Mutex MPSC | Multiple gateways → one engine | `EngineMultiThreaded`: `std::mutex` + `lock_guard` |
+| Lock-free queue | Single gateway → engine pipeline | `LockFreeQueue` ring buffer |
+| Mutex MPSC | Multiple gateways → one engine | Shared queue + mutex, or `EngineMultiThreaded` |
 
 The engine core is inherently single-threaded (exchange matching is serial). Concurrency models govern how events are routed from producers to that single core.
 
@@ -182,9 +182,9 @@ src/
 │   └── wal_logger.cpp/hpp      — Binary WAL (40-byte packed records)
 └── utils/
     ├── metrics.cpp/hpp         — Throughput counters
-    ├── latency_histogram.cpp/hpp — rdtsc, TSC calibration, percentiles
+    ├── latency_histogram.cpp/hpp — Per-event latency percentiles
     ├── event_parser.hpp        — CSV order file loader
-    ├── lockfree_queue.hpp      — SPSC ring buffer
+    ├── lockfree_queue.hpp      — Lock-free ring buffer
     ├── engine_lockfree.hpp     — Lock-free producer/consumer wrapper
     └── engine_mt.hpp           — Mutex-based multi-producer wrapper
 
@@ -199,16 +199,16 @@ tests/
 │   ├── test_iceberg.cpp        — 8 iceberg tests
 │   ├── test_l2.cpp             — 8 L2 snapshot tests
 │   ├── test_wal.cpp            — 9 WAL tests
-│   ├── test_histogram.cpp      — 8 rdtsc histogram tests
+│   ├── test_histogram.cpp      — 8 latency histogram tests
 │   └── test_validator.cpp      — 16 validation tests
 ├── concurrency/
 │   ├── test_mt.cpp             — Mutex MPSC
-│   └── test_lockfree.cpp       — SPSC vs MPSC vs mutex comparison
+│   └── test_lockfree.cpp       — Lock-free vs MPSC vs mutex comparison
 └── replay/
     └── test_replay.cpp         — Determinism verification
 
 benchmarks/
-├── bench_runner.cpp            — rdtsc-timed scenarios → CSV + table
+├── bench_runner.cpp            — Timed scenarios → CSV + table
 ├── test_benchmark.cpp          — Simple throughput baseline
 └── bench_parser.cpp            — CSV parser throughput
 ```
@@ -234,14 +234,14 @@ cd build
 ./elob_test_iceberg        # Iceberg replenishment (8 tests)
 ./elob_test_l2             # L2 market data snapshots (8 tests)
 ./elob_test_wal            # Binary WAL correctness (9 tests)
-./elob_test_histogram      # rdtsc histogram percentiles (8 tests)
+./elob_test_histogram      # Latency histogram percentiles (8 tests)
 ./elob_test_validator      # Pre-trade validation (16 tests)
 ./elob_test_concurrency    # Concurrency models comparison
 ```
 
 ### Benchmarks
 ```bash
-./elob_bench_runner   # rdtsc per-event timing → bench_results.csv
+./elob_bench_runner   # Per-event timing → bench_results.csv
 ./elob_benchmark      # Simple throughput baseline
 ./elob_bench_parser data/sample_orders.csv
 ```
@@ -306,9 +306,8 @@ wal.flush();
 ### Low-Latency Engineering
 - **O(1) everything on the hot path**: insert, cancel, modify, best bid/ask
 - Zero heap allocation during matching (pool allocator)
-- Cache-line aware: `OrderPool` entries packed; SPSC atomics `alignas(64)`
-- `rdtsc` directly (not `std::chrono`) for sub-nanosecond measurement resolution
-- TSC calibrated once at startup; no per-event syscalls
+- Cache-friendly layouts: packed `OrderPool` entries; padded atomics in the lock-free queue
+- Fine-grained per-event latency measurement with percentile histograms
 
 ### Risk & Compliance Infrastructure
 - Pre-trade validator (SEC Rule 15c3-5 pattern): duplicate IDs, price bands, monotonic timestamps
